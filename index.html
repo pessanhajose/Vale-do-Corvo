@@ -491,12 +491,7 @@
                     dungeonFog[x][y] = defaultValue;
                 }
             }
-            // Pre-reveal starting entrance room
-            for (let x = 10; x <= 32; x++) {
-                for (let y = 34; y <= 38; y++) {
-                    dungeonFog[x][y] = 1;
-                }
-            }
+            // A área inicial será revelada ao redor dos heróis quando entrarem na cripta.
         }
         initDungeonFog(0);
 
@@ -987,6 +982,37 @@
             }
         }
 
+        // Cada herói começa isolado em uma sala aleatória diferente.
+        // A Câmara do Altar é excluída para preservar o encontro final.
+        function placeHeroesInRandomCryptRoom() {
+            const rooms = [
+                { name: 'Cela Antiga', x1: 17, y1: 8, x2: 26, y2: 13 },
+                { name: 'Câmara Ritualística', x1: 18, y1: 17, x2: 27, y2: 23 },
+                { name: 'Ala Oeste', x1: 10, y1: 22, x2: 21, y2: 26 },
+                { name: 'Câmara Inferior Oeste', x1: 5, y1: 28, x2: 13, y2: 34 },
+                { name: 'Grande Salão Inferior', x1: 10, y1: 34, x2: 32, y2: 38 },
+                { name: 'Câmara dos Sarcófagos', x1: 32, y1: 22, x2: 44, y2: 26 },
+                { name: 'Câmara Sudeste', x1: 28, y1: 27, x2: 38, y2: 35 }
+            ];
+            const heroes = tokens.filter(t => t.type === 'hero');
+            // Embaralha as salas e distribui uma sala diferente para cada herói.
+            const shuffledRooms = [...rooms].sort(() => Math.random() - 0.5);
+            heroes.forEach((hero, i) => {
+                const room = shuffledRooms[i % shuffledRooms.length];
+                // Escolhe uma posição interna aleatória, mantendo distância das paredes.
+                const minX = room.x1 + 1;
+                const maxX = Math.max(minX, room.x2 - 1);
+                const minY = room.y1 + 1;
+                const maxY = Math.max(minY, room.y2 - 1);
+                hero.x = minX + Math.floor(Math.random() * (maxX - minX + 1));
+                hero.y = minY + Math.floor(Math.random() * (maxY - minY + 1));
+            });
+            // Reinicia a névoa e revela apenas o entorno de cada herói.
+            initDungeonFog(0);
+            updateTorchVision();
+            return heroes.map((hero, i) => ({ hero: hero.name || `Jogador ${i + 1}`, sala: shuffledRooms[i % shuffledRooms.length].name }));
+        }
+
         // Mouse Interactions for Pan, Tokens, and Fog Painting
         container.addEventListener('mousedown', (e) => {
             isDragging = true;
@@ -1060,13 +1086,8 @@
 
                         // Check if stepping on Dungeon Entrance in Castle (8,8)
                         if (currentMapMode === 'overworld' && Math.abs(gridX - cryptEntrance.x) <= 1 && Math.abs(gridY - cryptEntrance.y) <= 1) {
-                            // Ao entrar, posiciona os heróis na sala de entrada da cripta.
-                            let heroIndex = 0;
-                            tokens.filter(t => t.type === 'hero').forEach(t => {
-                                t.x = 18 + (heroIndex % 3);
-                                t.y = 35 + Math.floor(heroIndex / 3);
-                                heroIndex++;
-                            });
+                            // Cada entrada coloca o grupo em uma sala aleatória válida da cripta.
+                            placeHeroesInRandomCryptRoom();
                             switchMapMode('dungeon');
                         }
                         // Ao sair, devolve os heróis para a entrada reposicionada no mapa do vale.
