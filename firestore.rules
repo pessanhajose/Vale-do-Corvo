@@ -1,0 +1,71 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+    function isMaster() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'master';
+    }
+
+    // Cada usuário pode ler seu próprio perfil. A inscrição pública nunca pode
+    // atribuir a si mesma o papel de mestre.
+    match /users/{uid} {
+      allow read: if isSelf(uid) || isMaster();
+      allow create: if isSelf(uid)
+        && request.resource.data.keys().hasOnly(['role', 'displayName', 'createdAt'])
+        && request.resource.data.role == 'player';
+      allow update: if isMaster()
+        || (isSelf(uid)
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName']));
+      allow delete: if isMaster();
+    }
+
+    // Dados públicos da sessão: nunca coloque aqui tesouros ocultos, armadilhas
+    // secretas, notas do mestre ou estados de exploração privados.
+    match /sessions/{sessionId} {
+      allow read: if signedIn();
+      allow write: if isMaster();
+    }
+
+    // Um jogador só pode ler e alterar o próprio personagem; o mestre pode
+    // administrar todos os personagens.
+    match /players/{uid} {
+      allow read: if isSelf(uid) || isMaster();
+      allow create, update: if isMaster()
+        || (isSelf(uid)
+          && request.resource.data.keys().hasOnly([
+            'uid', 'characterName', 'map', 'x', 'y', 'updatedAt'
+          ])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.characterName is string
+          && request.resource.data.characterName.size() <= 60
+          && request.resource.data.map in ['overworld', 'dungeon']
+          && request.resource.data.x is int
+          && request.resource.data.y is int);
+      allow delete: if isMaster();
+    }
+
+    // Exploração persistente individual. O jogador só altera a própria névoa.
+    match /exploration/{uid} {
+      allow read, create, update: if isSelf(uid) || isMaster();
+      allow delete: if isMaster();
+    }
+
+    // Conteúdo secreto: leitura e escrita exclusivas do mestre.
+    match /treasures/{treasureId} {
+      allow read, write: if isMaster();
+    }
+
+    // Negar qualquer coleção não prevista por padrão.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
