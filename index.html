@@ -129,6 +129,15 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                     <label class="block text-xs text-gray-300 mb-1" for="firebase-display-name">Nome de exibição</label>
                     <input id="firebase-display-name" type="text" maxlength="60" autocomplete="nickname" placeholder="Nome do mestre ou jogador">
                 </div>
+                <div id="firebase-character-wrap" class="hidden">
+                    <label class="block text-xs text-gray-300 mb-1" for="firebase-character-name">Personagem</label>
+                    <select id="firebase-character-name" class="w-full bg-gothic-950 border border-gothic-600 rounded-lg p-2 text-gray-100">
+                        <option value="Guerreiro">Guerreiro</option>
+                        <option value="Mago">Mago</option>
+                        <option value="Ladino">Ladino</option>
+                        <option value="Clérigo">Clérigo</option>
+                    </select>
+                </div>
                 <div>
                     <label class="block text-xs text-gray-300 mb-1" for="firebase-email">E-mail</label>
                     <input id="firebase-email" type="email" autocomplete="email" required placeholder="voce@exemplo.com">
@@ -1273,7 +1282,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 applyFogBrush(gridX, gridY, 0);
             } else if (currentTool === 'token') {
                 const clickedToken = tokens.find(t => t.x === gridX && t.y === gridY);
-                if (clickedToken) {
+                if (clickedToken && window.ValeCorvoApp?.canMoveToken(clickedToken)) {
                     draggedTokenId = clickedToken.id;
                 }
             }
@@ -1400,11 +1409,13 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 name: name,
                 color: color,
                 x: centerX + Math.floor(Math.random() * 3) - 1,
-                y: centerY + Math.floor(Math.random() * 3) - 1
+                y: centerY + Math.floor(Math.random() * 3) - 1,
+                map: currentMapMode
             };
             tokens.push(newToken);
             populatePlayerSelects();
             drawMap();
+            window.ValeCorvoSync?.queueSessionSave();
         }
 
         function selectTokenType(e, type, name, color) {
@@ -1431,16 +1442,20 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                     name,
                     color,
                     x: gridX,
-                    y: gridY
+                    y: gridY,
+                    map: currentMapMode
                 });
                 populatePlayerSelects();
                 drawMap();
+                window.ValeCorvoSync?.queueSessionSave();
             }
         });
 
         function clearAllTokens() {
+            if (window.firebaseRole === 'player') return;
             tokens = [];
             drawMap();
+            window.ValeCorvoSync?.queueSessionSave();
         }
 
         function focusPoi(poiId) {
