@@ -492,8 +492,8 @@
                 }
             }
             // Pre-reveal starting entrance room
-            for (let x = 20; x <= 30; x++) {
-                for (let y = 30; y <= 38; y++) {
+            for (let x = 10; x <= 32; x++) {
+                for (let y = 34; y <= 38; y++) {
                     dungeonFog[x][y] = 1;
                 }
             }
@@ -859,72 +859,86 @@
                     const px = x * tileSize;
                     const py = y * tileSize;
 
-                    // Dungeon Architecture Layout
-                    // Rooms & Corridors vs Solid Rock Walls
+                    // Planta da cripta redesenhada seguindo o esboço enviado:
+                    // salas irregulares ligadas por corredores em zigue-zague.
                     let isRoom = false;
                     let isWall = false;
                     let isSpecial = '';
 
-                    // Entrance Hall (South)
-                    if (x >= 20 && x <= 30 && y >= 30 && y <= 38) isRoom = true;
-                    // Main Corridor (North-South)
-                    else if (x >= 23 && x <= 27 && y >= 10 && y <= 30) isRoom = true;
-                    // Ritual Room (Center North)
-                    else if (x >= 15 && x <= 35 && y >= 5 && y <= 15) { isRoom = true; isSpecial = 'ritual'; }
-                    // West Prison Cells
-                    else if (x >= 8 && x <= 18 && y >= 20 && y <= 28) { isRoom = true; isSpecial = 'prison'; }
-                    // Corridor West
-                    else if (x >= 18 && x <= 23 && y >= 23 && y <= 25) isRoom = true;
-                    // East Crypt Vault
-                    else if (x >= 32 && x <= 42 && y >= 20 && y <= 28) { isRoom = true; isSpecial = 'crypt'; }
-                    // Corridor East
-                    else if (x >= 27 && x <= 32 && y >= 23 && y <= 25) isRoom = true;
+                    const inRect = (x1, y1, x2, y2) => x >= x1 && x <= x2 && y >= y1 && y <= y2;
+
+                    // Sala superior e braço noroeste.
+                    if (inRect(24, 2, 32, 7)) { isRoom = true; isSpecial = 'crypt'; }
+                    else if (inRect(17, 8, 26, 13)) { isRoom = true; isSpecial = 'prison'; }
+
+                    // Ligação superior em zigue-zague até à câmara central.
+                    else if (inRect(23, 7, 26, 10) ||
+                             inRect(23, 12, 30, 15) ||
+                             inRect(27, 14, 30, 19)) isRoom = true;
+
+                    // Câmara central.
+                    else if (inRect(18, 17, 27, 23)) { isRoom = true; isSpecial = 'ritual'; }
+
+                    // Ala oeste e sala inferior esquerda.
+                    else if (inRect(10, 22, 21, 26)) { isRoom = true; isSpecial = 'prison'; }
+                    else if (inRect(10, 26, 13, 29) || inRect(5, 28, 13, 34)) isRoom = true;
+
+                    // Grande salão inferior, ligado à sala central e à ala sudeste.
+                    else if (inRect(10, 34, 32, 38)) { isRoom = true; isSpecial = 'crypt'; }
+                    else if (inRect(28, 27, 38, 35)) { isRoom = true; isSpecial = 'crypt'; }
+
+                    // Corredor leste e câmara oriental.
+                    else if (inRect(32, 22, 44, 26)) { isRoom = true; isSpecial = 'prison'; }
+                    else if (inRect(30, 23, 33, 25) || inRect(27, 24, 31, 29)) isRoom = true;
 
                     if (isRoom) {
-                        if (isSpecial === 'ritual') ctx.fillStyle = '#1e1b2e'; // Dark Arcane Purple
-                        else if (isSpecial === 'prison') ctx.fillStyle = '#1b2024'; // Cold Slate
-                        else if (isSpecial === 'crypt') ctx.fillStyle = '#221c1a'; // Bloody Tomb
-                        else ctx.fillStyle = '#1c1f26'; // Dark Stone Floor
+                        if (isSpecial === 'ritual') ctx.fillStyle = '#494052'; // Câmara ritual mais clara
+                        else if (isSpecial === 'prison') ctx.fillStyle = '#3c454d'; // Pedra fria, mais visível
+                        else if (isSpecial === 'crypt') ctx.fillStyle = '#493b35'; // Pedra da cripta iluminada
+                        else ctx.fillStyle = '#39414b'; // Piso de pedra mais claro
 
                         ctx.fillRect(px, py, tileSize, tileSize);
 
                         // Stone Flagstone Pattern
-                        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
-                        ctx.lineWidth = 0.5;
+                        ctx.strokeStyle = 'rgba(220, 226, 235, 0.22)';
+                        ctx.lineWidth = 1.1;
                         ctx.strokeRect(px + 2, py + 2, tileSize - 4, tileSize - 4);
 
                         if (showGridLines) {
-                            ctx.strokeStyle = 'rgba(80, 90, 110, 0.25)';
-                            ctx.lineWidth = 0.8;
+                            ctx.strokeStyle = 'rgba(210, 220, 235, 0.30)';
+                            ctx.lineWidth = 1.0;
                             ctx.strokeRect(px, py, tileSize, tileSize);
                         }
                     } else {
                         // Solid Unexcavated Rock Wall
-                        ctx.fillStyle = '#0d0f12';
+                        ctx.fillStyle = '#171a20';
                         ctx.fillRect(px, py, tileSize, tileSize);
-                        ctx.fillStyle = '#08090b';
+                        ctx.fillStyle = '#222730';
                         ctx.fillRect(px + 3, py + 3, tileSize - 6, tileSize - 6);
+                        ctx.strokeStyle = 'rgba(130, 145, 165, 0.18)';
+                        ctx.lineWidth = 1;
+                        ctx.strokeRect(px + 1, py + 1, tileSize - 2, tileSize - 2);
                     }
                 }
             }
 
             // Dungeon Decorative Elements (Torches, Sarcophagi, Ritual Circles)
-            // Ritual Circle in North Room
-            const rcX = 25 * tileSize + tileSize / 2;
-            const rcY = 10 * tileSize + tileSize / 2;
+            // Altar do Pacto no salão final da cripta (câmara superior), longe da entrada.
+            const rcX = 28 * tileSize + tileSize / 2;
+            const rcY = 4 * tileSize + tileSize / 2;
             ctx.beginPath();
-            ctx.arc(rcX, rcY, tileSize * 2.5, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
+            ctx.arc(rcX, rcY, tileSize * 1.8, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(248, 113, 113, 0.85)';
             ctx.lineWidth = 2;
             ctx.stroke();
 
-            ctx.fillStyle = '#ef4444';
+            ctx.fillStyle = '#ff7777';
             ctx.font = 'bold 12px Cinzel, serif';
             ctx.textAlign = 'center';
-            ctx.fillText("ALTAR DO PACTO", rcX, rcY);
+            ctx.fillText("ALTAR DO PACTO", rcX, rcY + 5);
 
-            // Sarcophagi in Crypt (East Room)
-            [ {x:35, y:22}, {x:39, y:22}, {x:35, y:26}, {x:39, y:26} ].forEach(s => {
+            // Sarcófagos na câmara oriental.
+            [ {x:35, y:23}, {x:40, y:23}, {x:35, y:25}, {x:40, y:25} ].forEach(s => {
                 ctx.fillStyle = '#3a3d45';
                 ctx.fillRect(s.x * tileSize + 4, s.y * tileSize + 4, tileSize - 8, tileSize - 8);
                 ctx.strokeStyle = '#6b7280';
@@ -932,7 +946,7 @@
             });
 
             // Torches (Glowing Braziers)
-            const torches = [{x:21,y:31},{x:29,y:31},{x:24,y:12},{x:26,y:12},{x:16,y:6},{x:34,y:6}];
+            const torches = [{x:12,y:35},{x:29,y:35},{x:19,y:20},{x:26,y:20},{x:24,y:10},{x:38,y:24},{x:8,y:31},{x:25,y:3},{x:31,y:5}];
             torches.forEach(t => {
                 const tx = t.x * tileSize + tileSize / 2;
                 const ty = t.y * tileSize + tileSize / 2;
@@ -951,8 +965,8 @@
             });
 
             // Entrance Stairs Back to Surface
-            const stX = 25 * tileSize + tileSize / 2;
-            const stY = 37 * tileSize + tileSize / 2;
+            const stX = 20 * tileSize + tileSize / 2;
+            const stY = 36 * tileSize + tileSize / 2;
             ctx.fillStyle = '#d4af37';
             ctx.font = 'bold 11px Inter, sans-serif';
             ctx.textAlign = 'center';
@@ -1041,12 +1055,15 @@
                         token.x = gridX;
                         token.y = gridY;
 
+                        // Recalcula a visão imediatamente quando um token se move.
+                        if (currentMapMode === 'dungeon' && token.type === 'hero') updateTorchVision();
+
                         // Check if stepping on Dungeon Entrance in Castle (8,8)
                         if (currentMapMode === 'overworld' && Math.abs(gridX - cryptEntrance.x) <= 1 && Math.abs(gridY - cryptEntrance.y) <= 1) {
                             // Ao entrar, posiciona os heróis na sala de entrada da cripta.
                             let heroIndex = 0;
                             tokens.filter(t => t.type === 'hero').forEach(t => {
-                                t.x = 24 + (heroIndex % 3);
+                                t.x = 18 + (heroIndex % 3);
                                 t.y = 35 + Math.floor(heroIndex / 3);
                                 heroIndex++;
                             });
