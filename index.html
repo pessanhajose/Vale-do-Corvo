@@ -97,6 +97,13 @@
             50% { box-shadow: 0 0 25px rgba(16, 185, 129, 0.8); }
         }
     </style>
+<style>
+#treasure-panel{max-height:82vh;overflow:auto} .treasure-card{border:1px solid #51443b;background:rgba(20,20,25,.94);border-radius:.6rem;padding:.7rem;margin:.5rem 0}
+.treasure-marker{font: bold 12px Inter,sans-serif;text-align:center;}
+body.player-view #token-tray, body.player-view #sidebar, body.player-view #dungeon-quick-controls, body.player-view #fow-tools, body.player-view #btn-move-crypt, body.player-view #btn-grid, body.player-view #btn-mist, body.player-view #mist-density, body.player-view #btn-lore-toggle, body.player-view #treasure-panel, body.player-view #tool-token {display:none!important}
+body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {display:none!important}
+@media(max-width:800px){#treasure-panel{left:3vw!important;right:3vw!important;width:auto!important;max-width:none!important} #player-view-controls{max-width:48vw;}}
+</style>
 </head>
 <body class="h-screen flex flex-col bg-gothic-950 text-gray-100 overflow-hidden">
 
@@ -173,6 +180,16 @@
             <button onclick="toggleSidebar()" class="px-3 py-1.5 rounded bg-blood-800 hover:bg-blood-700 border border-corvo-gold text-xs flex items-center gap-1.5 font-gothic text-corvo-gold">
                 <i class="fa-solid fa-book-skull"></i> <span>Lore & Mestres</span>
             </button>
+            <button id="btn-lore-toggle" onclick="toggleTreasurePanel()" class="px-3 py-1.5 rounded bg-gothic-800 hover:bg-gothic-700 border border-amber-600 text-xs flex items-center gap-1.5 text-amber-200">
+                <i class="fa-solid fa-gem"></i> <span>Tesouros</span>
+            </button>
+            <button id="btn-view-mode" onclick="togglePlayerView()" class="px-3 py-1.5 rounded bg-red-950 hover:bg-red-900 border border-red-700 text-xs flex items-center gap-1.5 text-red-200" title="Alternar entre ferramentas do mestre e visualização dos jogadores">
+                <i class="fa-solid fa-hat-wizard"></i> <span id="view-mode-label">Modo Mestre</span>
+            </button>
+            <div id="player-view-controls" class="hidden items-center gap-1 bg-gothic-800 border border-gothic-600 rounded px-2 py-1 text-xs">
+                <label for="active-player" class="text-gray-300">Jogador</label>
+                <select id="active-player" onchange="drawMap();renderTreasurePanel()" class="bg-gothic-950 border border-gothic-600 rounded p-1 text-gray-100"></select>
+            </div>
         </div>
     </header>
 
@@ -497,6 +514,24 @@
     </div>
 
     <!-- POI Details Modal -->
+    <div id="treasure-panel" class="fixed top-20 right-4 w-[390px] bg-gothic-900 border border-amber-700 rounded-xl shadow-2xl z-40 p-4 hidden">
+        <div class="flex items-center justify-between border-b border-gothic-700 pb-2 mb-3">
+            <div><h2 class="font-gothic text-corvo-gold font-bold"><i class="fa-solid fa-gem"></i> Tesouros & Descobertas</h2><p class="text-[11px] text-gray-400">Painel privado do mestre</p></div>
+            <button onclick="toggleTreasurePanel(false)" class="text-gray-400 hover:text-white" aria-label="Fechar painel"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="grid grid-cols-2 gap-2 mb-3">
+            <label class="text-xs text-gray-300">Personagem alvo<select id="treasure-player-select" class="mt-1 w-full bg-gothic-950 border border-gothic-600 rounded p-2 text-gray-100"></select></label>
+            <label class="text-xs text-gray-300">Local do mapa<select id="treasure-map-filter" onchange="renderTreasurePanel()" class="mt-1 w-full bg-gothic-950 border border-gothic-600 rounded p-2 text-gray-100"><option value="all">Todos os mapas</option><option value="overworld">Vale-Corvo</option><option value="dungeon">Cripta</option></select></label>
+        </div>
+        <p class="text-[11px] text-amber-200 mb-2">Use “Revelar para jogador” quando passar em Percepção, Investigação ou encontrar uma pista. Cada personagem mantém sua própria descoberta.</p>
+        <div id="treasure-list"></div>
+        <div class="border-t border-gothic-700 pt-3 mt-3 flex flex-wrap gap-2">
+            <button onclick="addCustomTreasure()" class="px-3 py-2 rounded bg-amber-900 hover:bg-amber-800 border border-amber-600 text-xs text-amber-100"><i class="fa-solid fa-plus"></i> Criar tesouro no mapa</button>
+            <button onclick="resetTreasureReveals()" class="px-3 py-2 rounded bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 text-xs">Resetar revelações</button>
+        </div>
+        <p id="treasure-status" class="text-[11px] text-emerald-300 mt-2" role="status"></p>
+    </div>
+
     <div id="poi-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
         <div class="bg-gothic-900 border border-corvo-gold rounded-xl max-w-lg w-full p-6 shadow-2xl relative space-y-4">
             <button onclick="closePoiModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white text-lg">
@@ -723,6 +758,122 @@
         }
 
         // Draw Overworld or Dungeon
+        // Tesouros ocultos: coordenadas em quadrados do mapa. Revelações são individuais por personagem.
+        const defaultPlayers = ['Guerreiro', 'Mago', 'Ladino', 'Clérigo'];
+        let playerViewMode = false;
+        let treasureIdCounter = 100;
+        let treasures = [
+            {id:1,name:'Bolsa de moedas antigas',map:'overworld',x:13,y:27,kind:'Moedas',description:'Moedas antigas marcadas com o corvo de Roderick.',hint:'Há terra recém-revolvida junto a uma árvore caída.',dc:12,hidden:true,revealedTo:[],collectedBy:[]},
+            {id:2,name:'Mapa incompleto',map:'overworld',x:17,y:31,kind:'Pista',description:'Um fragmento de mapa mostra uma trilha até o Cemitério Esquecido.',hint:'Um canto de pergaminho aparece entre pedras.',dc:11,hidden:true,revealedTo:[],collectedBy:[]},
+            {id:3,name:'Broche do Corvo',map:'overworld',x:8,y:8,kind:'Relíquia',description:'Um broche de prata com um corvo de asas fechadas. Pode abrir portas antigas.',hint:'O brasão do castelo parece encaixar numa fenda da pedra.',dc:14,hidden:true,revealedTo:[],collectedBy:[]},
+            {id:4,name:'Chave de osso',map:'dungeon',x:14,y:24,kind:'Chave',description:'Uma chave esculpida em osso, fria ao toque. Abre um compartimento funerário.',hint:'O reboco perto do chão está rachado e parece oco.',dc:12,hidden:true,revealedTo:[],collectedBy:[]},
+            {id:5,name:'Estojo funerário',map:'dungeon',x:37,y:24,kind:'Tesouro',description:'Três gemas pequenas e um selo funerário envelhecido.',hint:'Um dos sarcófagos tem marcas recentes na base.',dc:13,hidden:true,revealedTo:[],collectedBy:[]},
+            {id:6,name:'Frasco de luz âmbar',map:'dungeon',x:22,y:20,kind:'Consumível',description:'Uma luz dourada ilumina até 6 metros por 10 minutos e revela inscrições ocultas.',hint:'A fuligem forma um círculo limpo em torno de uma pedra.',dc:12,hidden:true,revealedTo:[],collectedBy:[]},
+            {id:7,name:'Diário do prisioneiro',map:'dungeon',x:12,y:24,kind:'Pista',description:'O diário descreve uma passagem falsa e cita o nome do terceiro herdeiro.',hint:'Há papel apodrecido preso atrás de uma pedra solta.',dc:11,hidden:true,revealedTo:[],collectedBy:[]},
+            {id:8,name:'Coração de Âmbar',map:'dungeon',x:28,y:4,kind:'Relíquia rara',description:'Relíquia do Altar do Pacto. Pode enfraquecer o vínculo com a névoa, mas exige uma escolha difícil.',hint:'O altar pulsa com uma luz dourada sob as marcas vermelhas.',dc:16,hidden:true,revealedTo:[],collectedBy:[]},
+            {id:9,name:'Fragmento do Contrato Original',map:'dungeon',x:30,y:6,kind:'Segredo',description:'Um fragmento prova que o pacto foi alterado por alguém da linhagem do Barão.',hint:'Uma inscrição fica visível apenas sob luz mágica ou após examinar o altar.',dc:15,hidden:true,revealedTo:[],collectedBy:[]},
+            {id:10,name:'Lanterna da Última Vigília',map:'dungeon',x:25,y:3,kind:'Relíquia rara',description:'Lanterna que, uma vez por descanso longo, ilumina rastros de criaturas invisíveis na névoa.',hint:'A chama de uma tocha não projeta sombra sobre um nicho estreito.',dc:15,hidden:true,revealedTo:[],collectedBy:[]}
+        ];
+        function getPlayers(){
+            const fromTokens=tokens.filter(t=>t.type==='hero').map(t=>t.name).filter(Boolean);
+            return [...new Set([...defaultPlayers,...fromTokens])];
+        }
+        function populatePlayerSelects(){
+            const players=getPlayers();
+            ['active-player','treasure-player-select'].forEach(id=>{
+                const el=document.getElementById(id); if(!el) return;
+                const previous=el.value;
+                el.innerHTML=players.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
+                if(players.includes(previous)) el.value=previous;
+            });
+        }
+        function escapeHtml(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+        function isTreasureVisible(t){
+            if(!playerViewMode) return true;
+            const player=document.getElementById('active-player')?.value || defaultPlayers[0];
+            return t.revealedTo.includes(player);
+        }
+        function drawTreasureMarkers(){
+            treasures.filter(t=>t.map===currentMapMode && isTreasureVisible(t)).forEach(t=>{
+                if(playerViewMode && currentMapMode==='dungeon' && (!dungeonFog[t.x] || dungeonFog[t.x][t.y]!==1)) return;
+                const x=t.x*tileSize+tileSize/2, y=t.y*tileSize+tileSize/2;
+                ctx.save();
+                ctx.beginPath();ctx.arc(x,y,t.collectedBy.length?tileSize*.22:tileSize*.3,0,Math.PI*2);
+                ctx.fillStyle=t.collectedBy.length?'rgba(100,116,139,.9)':'rgba(217,119,6,.95)';ctx.fill();
+                ctx.lineWidth=2;ctx.strokeStyle=t.collectedBy.length?'#cbd5e1':'#fde68a';ctx.stroke();
+                ctx.fillStyle='#1c1917';ctx.font=`bold ${Math.max(10,tileSize*.42)}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(t.collectedBy.length?'✓':'✦',x,y);
+                if(!playerViewMode){ctx.fillStyle='#fef3c7';ctx.font='bold 10px Inter,sans-serif';ctx.fillText(t.name.substring(0,18),x,y-tileSize*.42);}
+                ctx.restore();
+            });
+        }
+        function togglePlayerView(){
+            playerViewMode=!playerViewMode;
+            document.body.classList.toggle('player-view',playerViewMode);
+            document.getElementById('view-mode-label').textContent=playerViewMode?'Modo Jogadores':'Modo Mestre';
+            const b=document.getElementById('btn-view-mode');
+            b.className=playerViewMode?'px-3 py-1.5 rounded bg-emerald-950 hover:bg-emerald-900 border border-emerald-700 text-xs flex items-center gap-1.5 text-emerald-200':'px-3 py-1.5 rounded bg-red-950 hover:bg-red-900 border border-red-700 text-xs flex items-center gap-1.5 text-red-200';
+            document.getElementById('player-view-controls').classList.toggle('hidden',!playerViewMode);
+            document.getElementById('player-view-controls').classList.toggle('flex',playerViewMode);
+            document.getElementById('treasure-panel').classList.add('hidden');
+            drawMap();
+        }
+        function toggleTreasurePanel(force){
+            if(playerViewMode) return;
+            const panel=document.getElementById('treasure-panel');
+            const show=typeof force==='boolean'?force:panel.classList.contains('hidden');
+            panel.classList.toggle('hidden',!show);
+            if(show){populatePlayerSelects();renderTreasurePanel();}
+        }
+        function revealTreasure(id){
+            const t=treasures.find(x=>x.id===id);if(!t)return;
+            const player=document.getElementById('treasure-player-select').value || defaultPlayers[0];
+            if(!t.revealedTo.includes(player))t.revealedTo.push(player);
+            document.getElementById('treasure-status').textContent=`“${t.name}” revelado para ${player}.`;
+            renderTreasurePanel();drawMap();
+        }
+        function collectTreasure(id){
+            const t=treasures.find(x=>x.id===id);if(!t)return;
+            const player=document.getElementById('treasure-player-select').value || defaultPlayers[0];
+            if(!t.collectedBy.includes(player))t.collectedBy.push(player);
+            document.getElementById('treasure-status').textContent=`“${t.name}” marcado como coletado por ${player}.`;
+            renderTreasurePanel();drawMap();
+        }
+        function hideTreasure(id){
+            const t=treasures.find(x=>x.id===id);if(!t)return;
+            const player=document.getElementById('treasure-player-select').value || defaultPlayers[0];
+            t.revealedTo=t.revealedTo.filter(n=>n!==player);
+            renderTreasurePanel();drawMap();
+            document.getElementById('treasure-status').textContent=`A descoberta de “${t.name}” foi ocultada para ${player}.`;
+        }
+        function renderTreasurePanel(){
+            const list=document.getElementById('treasure-list');if(!list)return;
+            const filter=document.getElementById('treasure-map-filter')?.value||'all';
+            const player=document.getElementById('treasure-player-select')?.value||defaultPlayers[0];
+            const arr=treasures.filter(t=>filter==='all'||t.map===filter);
+            list.innerHTML=arr.map(t=>`<div class="treasure-card">
+              <div class="flex items-start justify-between gap-2"><div><div class="text-sm font-bold text-amber-200">${escapeHtml(t.name)}</div><div class="text-[10px] uppercase tracking-wide text-gray-400">${t.map==='dungeon'?'Cripta':'Vale-Corvo'} · ${escapeHtml(t.kind)} · ${getColumnLetter(t.x)}${t.y+1}</div></div><span class="text-[10px] ${t.collectedBy.includes(player)?'text-slate-300':'text-emerald-300'}">${t.collectedBy.includes(player)?'Coletado':t.revealedTo.includes(player)?'Revelado':'Oculto'}</span></div>
+              <p class="text-xs text-gray-300 mt-2"><b>Descrição:</b> ${escapeHtml(t.description)}</p><p class="text-xs text-gray-400 mt-1"><b>Pista:</b> ${escapeHtml(t.hint)} <span class="text-amber-200">(CD ${t.dc})</span></p>
+              <div class="flex flex-wrap gap-1.5 mt-2"><button onclick="revealTreasure(${t.id})" class="px-2 py-1 rounded bg-emerald-900 hover:bg-emerald-800 text-[10px] border border-emerald-700">Revelar para jogador</button><button onclick="hideTreasure(${t.id})" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] border border-slate-600">Ocultar</button><button onclick="collectTreasure(${t.id})" class="px-2 py-1 rounded bg-amber-900 hover:bg-amber-800 text-[10px] border border-amber-700">Marcar coletado</button></div>
+              <p class="text-[10px] text-gray-500 mt-1">Revelado para: ${t.revealedTo.length?escapeHtml(t.revealedTo.join(', ')):'ninguém'}${t.collectedBy.length?' · Coletado por: '+escapeHtml(t.collectedBy.join(', ')):''}</p></div>`).join('');
+        }
+        function addCustomTreasure(){
+            const name=prompt('Nome do tesouro:');if(!name)return;
+            const description=prompt('Descrição/efeito do tesouro:')||'Objeto ainda não identificado.';
+            const hint=prompt('Pista para encontrar (opcional):')||'Examine o local com atenção.';
+            const map=currentMapMode;
+            const x=Math.max(0,Math.min(GRID_COLS-1,Math.floor(((canvas.width/2-offsetX)/scale)/tileSize)));
+            const y=Math.max(0,Math.min(GRID_ROWS-1,Math.floor(((canvas.height/2-offsetY)/scale)/tileSize)));
+            treasures.push({id:++treasureIdCounter,name:name.trim(),map,x,y,kind:'Personalizado',description,hint,dc:12,hidden:true,revealedTo:[],collectedBy:[]});
+            document.getElementById('treasure-status').textContent=`Tesouro “${name.trim()}” criado próximo ao centro da vista atual (${getColumnLetter(x)}${y+1}).`;
+            renderTreasurePanel();drawMap();
+        }
+        function resetTreasureReveals(){
+            if(!confirm('Apagar todas as descobertas e marcações de coleta?'))return;
+            treasures.forEach(t=>{t.revealedTo=[];t.collectedBy=[];});
+            document.getElementById('treasure-status').textContent='Todas as revelações e coletas foram resetadas.';
+            renderTreasurePanel();drawMap();
+        }
+
         function drawMap() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -783,6 +934,8 @@
             if (currentMapMode === 'dungeon') {
                 drawDungeonFogOverlay();
             }
+            // Marcadores aparecem por cima do mapa apenas quando o personagem tem descoberta.
+            drawTreasureMarkers();
 
             ctx.restore();
             updateScaleBar();
@@ -1174,6 +1327,20 @@
             draggedTokenId = null;
         });
 
+        // No modo Jogadores, clicar num marcador descoberto abre apenas a ficha pública do tesouro.
+        container.addEventListener('click', (e) => {
+            if (!playerViewMode || e.target.closest('button,select,input,label')) return;
+            const rect = canvas.getBoundingClientRect();
+            const mx = (e.clientX - rect.left - offsetX) / scale;
+            const my = (e.clientY - rect.top - offsetY) / scale;
+            const gx = Math.floor(mx / tileSize), gy = Math.floor(my / tileSize);
+            const player = document.getElementById('active-player')?.value || defaultPlayers[0];
+            const t = treasures.find(item => item.map === currentMapMode && item.x === gx && item.y === gy && item.revealedTo.includes(player));
+            if (t) {
+                alert(`${t.name}\n${t.kind}${t.collectedBy.includes(player) ? ' · Já coletado' : ''}\n\n${t.description}`);
+            }
+        });
+
         container.addEventListener('wheel', (e) => {
             e.preventDefault();
             const zoomFactor = 1.1;
@@ -1216,6 +1383,7 @@
                 y: centerY + Math.floor(Math.random() * 3) - 1
             };
             tokens.push(newToken);
+            populatePlayerSelects();
             drawMap();
         }
 
@@ -1245,6 +1413,7 @@
                     x: gridX,
                     y: gridY
                 });
+                populatePlayerSelects();
                 drawMap();
             }
         });
@@ -1383,8 +1552,10 @@
         });
 
         window.onload = function() {
+            populatePlayerSelects();
             resizeCanvas();
             resetView();
+            renderTreasurePanel();
         };
     </script>
 </body>
