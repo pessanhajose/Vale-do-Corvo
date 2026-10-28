@@ -106,9 +106,18 @@ window.ValeCorvoSync = { queueSessionSave, saveTokenPosition, saveExploration, s
 onAuthStateChanged(auth, async user => {
   stopListeners();
   activeUser = user;
-  role = user ? window.firebaseRole : null;
+  role = null;
   playerDocs = new Map();
-  if (!user || !role) return;
+  if (!user) return;
+  try {
+    const profile = await getDoc(doc(db, "users", user.uid));
+    role = profile.exists() ? profile.data()?.role : null;
+    window.firebaseRole = role;
+  } catch (error) {
+    showSyncError(error);
+    return;
+  }
+  if (!role) return;
 
   if (role === "master") {
     unsubscribers.push(onSnapshot(stateRef, snap => {
