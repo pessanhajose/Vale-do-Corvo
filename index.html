@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vale-Corvo: Anamap1</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        gothic: {
+                            950: '#090a0f',
+                            900: '#11131c',
+                            800: '#1a1d2e',
+                            700: '#272b42',
+                            600: '#3a4063',
+                        },
+                        blood: {
+                            600: '#991b1b',
+                            700: '#7f1d1d',
+                            800: '#651c1c',
+                        },
+                        corvo: {
+                            gold: '#d4af37',
+                            mist: '#94a3b8',
+                            glow: '#10b981',
+                        }
+                    },
+                    fontFamily: {
+                        serif: ['Cinzel', 'Georgia', 'serif'],
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts: Cinzel & Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #090a0f;
+            color: #e2e8f0;
+            overflow: hidden;
+            user-select: none;
+        }
+        .font-gothic {
+            font-family: 'Cinzel', serif;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #11131c;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #272b42;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3a4063;
+        }
+        /* Mist animation */
+        @keyframes drift {
+            0% { transform: translateX(0) translateY(0) scale(1); opacity: 0.85; }
+            50% { transform: translateX(45px) translateY(-18px) scale(1.08); opacity: 0.95; }
+            100% { transform: translateX(0) translateY(0) scale(1); opacity: 0.85; }
+        }
+        @keyframes driftReverse {
+            0% { transform: translateX(0) translateY(0) scale(1.05); opacity: 0.7; }
+            50% { transform: translateX(-35px) translateY(12px) scale(0.95); opacity: 0.9; }
+            100% { transform: translateX(0) translateY(0) scale(1.05); opacity: 0.7; }
+        }
+        .mist-layer-1 {
+            animation: drift 18s ease-in-out infinite;
+            pointer-events: none;
+            background: radial-gradient(ellipse at center, rgba(14, 19, 18, 0.88) 0%, rgba(10, 14, 13, 0.96) 70%, rgba(5, 8, 7, 0.99) 100%);
+        }
+        .mist-layer-2 {
+            animation: driftReverse 24s ease-in-out infinite;
+            pointer-events: none;
+            background: linear-gradient(135deg, rgba(20, 28, 25, 0.7) 0%, rgba(12, 16, 15, 0.85) 50%, rgba(5, 8, 7, 0.95) 100%);
+        }
+        .pulse-glow {
+            animation: pulseGlow 2s infinite;
+        }
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 10px rgba(16, 185, 129, 0.4); }
+            50% { box-shadow: 0 0 25px rgba(16, 185, 129, 0.8); }
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col bg-gothic-950 text-gray-100 overflow-hidden">
+
+    <!-- Top Navigation / Toolbar -->
+    <header class="bg-gothic-900 border-b border-gothic-700 px-4 py-3 flex flex-wrap items-center justify-between z-30 shadow-lg">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded bg-blood-800 border border-corvo-gold flex items-center justify-center text-corvo-gold font-gothic font-bold text-xl shadow-inner">
+                <i class="fa-solid fa-crow"></i>
+            </div>
+            <div>
+                <h1 class="font-gothic text-lg md:text-xl font-bold tracking-wider text-corvo-gold flex items-center gap-2">
+                    Vale-Corvo (Anamap1) <span class="text-xs bg-gothic-800 border border-gothic-600 px-2 py-0.5 rounded text-gray-300">Escala: 1q = 1.5m</span>
+                </h1>
+                <p class="text-xs text-gray-400">Baronato Decadente sob a névoa do Barão Roderick</p>
+            </div>
+        </div>
+
+        <!-- Center Controls / Tools -->
+        <div class="flex items-center space-x-2 my-1 md:my-0">
+            <button id="tool-pan" onclick="setTool('pan')" class="px-3 py-1.5 rounded bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 text-xs flex items-center gap-1.5 transition active" title="Ferramenta de Navegação">
+                <i class="fa-solid fa-hand"></i> <span class="hidden sm:inline">Mover</span>
+            </button>
+            <button id="tool-token" onclick="setTool('token')" class="px-3 py-1.5 rounded bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 text-xs flex items-center gap-1.5 transition" title="Adicionar / Mover Tokens">
+                <i class="fa-solid fa-chess-rook"></i> <span class="hidden sm:inline">Tokens</span>
+            </button>
+            
+            <!-- Dungeon Vision / Fog Tools (Visible in Dungeon mode) -->
+            <div id="fow-tools" class="hidden flex items-center space-x-1 pl-1 border-l border-gothic-700">
+                <button id="tool-reveal" onclick="setTool('reveal')" class="px-2.5 py-1.5 rounded bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 text-xs text-amber-400 flex items-center gap-1" title="Revelar Névoa (Luz)">
+                    <i class="fa-solid fa-sun"></i> <span class="hidden md:inline">Revelar</span>
+                </button>
+                <button id="tool-hide" onclick="setTool('hide')" class="px-2.5 py-1.5 rounded bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 text-xs text-slate-400 flex items-center gap-1" title="Ocultar Névoa (Escuridão)">
+                    <i class="fa-solid fa-moon"></i> <span class="hidden md:inline">Ocultar</span>
+                </button>
+                <input type="range" id="brush-size" min="1" max="6" value="3" oninput="brushRadius = parseInt(this.value)" class="w-12 h-1 accent-amber-500 cursor-pointer" title="Tamanho do Pincel de Visão">
+            </div>
+
+            <div class="h-6 w-px bg-gothic-700 mx-1"></div>
+            <button onclick="zoomIn()" class="w-8 h-8 rounded bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 flex items-center justify-center text-sm" title="Zoom In">
+                <i class="fa-solid fa-magnifying-glass-plus"></i>
+            </button>
+            <button onclick="zoomOut()" class="w-8 h-8 rounded bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 flex items-center justify-center text-sm" title="Zoom Out">
+                <i class="fa-solid fa-magnifying-glass-minus"></i>
+            </button>
+            <button id="btn-move-crypt" onclick="toggleMoveCryptEntrance()" class="px-2.5 py-1.5 rounded bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 text-xs flex items-center gap-1.5" title="Clique no mapa para reposicionar a entrada da cripta">
+                <i class="fa-solid fa-location-dot"></i> <span class="hidden sm:inline">Mover Cripta</span>
+            </button>
+            <button onclick="resetView()" class="px-3 py-1.5 rounded bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 text-xs flex items-center gap-1.5" title="Centralizar Mapa">
+                <i class="fa-solid fa-house-chimney"></i> <span class="hidden sm:inline">Resetar</span>
+            </button>
+        </div>
+
+        <!-- Right Tools & Toggles -->
+        <div class="flex items-center space-x-2">
+            <!-- Map Mode Switcher -->
+            <div class="flex bg-gothic-950 p-1 rounded-lg border border-gothic-700">
+                <button id="btn-mode-overworld" onclick="switchMapMode('overworld')" class="px-2.5 py-1 rounded text-xs font-gothic font-bold bg-blood-900 text-corvo-gold border border-corvo-gold shadow">
+                    <i class="fa-solid fa-mountain-sun"></i> <span class="hidden md:inline">Vale-Corvo</span>
+                </button>
+                <button id="btn-mode-dungeon" onclick="switchMapMode('dungeon')" class="px-2.5 py-1 rounded text-xs font-gothic font-bold text-gray-400 hover:text-white transition">
+                    <i class="fa-solid fa-dungeon"></i> <span class="hidden md:inline">Cripta</span>
+                </button>
+            </div>
+
+            <button onclick="toggleGrid()" id="btn-grid" class="px-3 py-1.5 rounded bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 text-xs flex items-center gap-1.5 text-emerald-400">
+                <i class="fa-solid fa-border-all"></i> <span class="hidden sm:inline">Grade (1.5m)</span>
+            </button>
+            <div class="flex items-center bg-gothic-800 border border-gothic-600 rounded px-2 py-1 gap-1.5">
+                <button onclick="toggleMist()" id="btn-mist" class="text-xs flex items-center gap-1 text-emerald-400" title="Alternar Névoa">
+                    <i class="fa-solid fa-cloud"></i> <span class="hidden sm:inline">Névoa</span>
+                </button>
+                <input type="range" id="mist-density" min="0.2" max="0.95" step="0.05" value="0.85" oninput="adjustMistDensity(this.value)" class="w-16 h-1 accent-emerald-500 cursor-pointer" title="Ajustar Densidade da Névoa">
+            </div>
+            <button onclick="toggleSidebar()" class="px-3 py-1.5 rounded bg-blood-800 hover:bg-blood-700 border border-corvo-gold text-xs flex items-center gap-1.5 font-gothic text-corvo-gold">
+                <i class="fa-solid fa-book-skull"></i> <span>Lore & Mestres</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex-1 flex relative overflow-hidden">
+
+        <!-- Interactive Map Canvas Container -->
+        <div id="map-container" class="flex-1 relative bg-gothic-950 overflow-hidden cursor-grab">
+            <canvas id="tactical-map" class="absolute top-0 left-0"></canvas>
+
+            <!-- Atmospheric Dark & Thick Mist Overlay Effect -->
+            <div id="mist-overlay" class="absolute inset-0 pointer-events-none mix-blend-multiply overflow-hidden transition-opacity duration-500" style="opacity: 0.85;">
+                <div class="absolute -inset-20 mist-layer-1"></div>
+                <div class="absolute -inset-20 mist-layer-2 mix-blend-darken"></div>
+            </div>
+
+            <!-- Quick Dungeon Controls Floating Box (Only when in Dungeon mode) -->
+            <div id="dungeon-quick-controls" class="absolute top-4 right-4 bg-gothic-900/90 border border-gothic-700 p-2.5 rounded-lg text-xs backdrop-blur-md shadow-xl flex items-center space-x-2 z-10 hidden">
+                <span class="font-gothic text-corvo-gold font-bold">Névoa de Guerra:</span>
+                <button onclick="revealAllFog()" class="px-2 py-1 bg-amber-950 hover:bg-amber-900 border border-amber-600 rounded text-[11px] text-amber-200">
+                    <i class="fa-solid fa-eye"></i> Revelar Tudo
+                </button>
+                <button onclick="hideAllFog()" class="px-2 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-600 rounded text-[11px] text-gray-300">
+                    <i class="fa-solid fa-eye-slash"></i> Ocultar Tudo
+                </button>
+                <button onclick="autoRevealTokens()" class="px-2 py-1 bg-emerald-950 hover:bg-emerald-900 border border-emerald-600 rounded text-[11px] text-emerald-200" title="Revelar visão do raio dos tokens">
+                    <i class="fa-solid fa-lightbulb"></i> Visão de Tocha
+                </button>
+                <label class="flex items-center gap-1 text-amber-100" title="Raio de visão em quadrados (cada quadrado = 1,5 m)">
+                    <span>Raio</span><input id="vision-radius" type="range" min="2" max="12" value="4" step="1" oninput="setVisionRadius(this.value)" class="w-20 accent-amber-500">
+                    <span id="vision-radius-label">4q</span>
+                </label>
+                <button id="btn-magic-vision" onclick="toggleMagicVision()" class="px-2 py-1 bg-violet-950 hover:bg-violet-900 border border-violet-600 rounded text-[11px] text-violet-200" title="Ativa visão ampliada para magia ou habilidade">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> Visão Mágica
+                </button>
+            </div>
+
+            <!-- Scale Bar Overlay -->
+            <div class="absolute bottom-4 left-4 bg-gothic-900/90 border border-gothic-700 px-3 py-2 rounded-lg text-xs backdrop-blur-md shadow-xl flex items-center space-x-3 z-10">
+                <div class="flex items-center space-x-1">
+                    <span class="font-gothic text-corvo-gold font-bold">Escala:</span>
+                    <span>1 Quadrado = 1.5m (5 pés)</span>
+                </div>
+                <div class="h-4 w-px bg-gothic-700"></div>
+                <div class="flex items-center space-x-2">
+                    <div class="w-10 h-2 bg-corvo-gold border border-black"></div>
+                    <span id="scale-meters">15m / 10q</span>
+                </div>
+            </div>
+
+            <!-- Floating Coordinates & Hover Info -->
+            <div id="hover-info" class="absolute top-4 left-4 bg-gothic-900/90 border border-gothic-700 px-3 py-1.5 rounded text-xs backdrop-blur-md shadow-md z-10 font-mono text-gray-300 hidden">
+                Coord: <span id="coord-display" class="text-corvo-gold font-bold">A1</span> | Terreno: <span id="terrain-display">Normal</span>
+            </div>
+
+            <!-- Floating Token Tray for Quick Placement -->
+            <div id="token-tray" class="absolute bottom-4 right-4 bg-gothic-900/95 border border-gothic-700 p-3 rounded-xl shadow-2xl backdrop-blur-md z-20 flex flex-col space-y-2">
+                <div class="text-xs font-gothic font-bold text-corvo-gold border-b border-gothic-700 pb-1 flex justify-between items-center">
+                    <span>Tokens Disponíveis</span>
+                    <span class="text-[10px] text-gray-400">Arraste ou Clique</span>
+                </div>
+                <div class="grid grid-cols-4 gap-2">
+                    <div draggable="true" ondragstart="selectTokenType(event, 'hero', 'Guerreiro', '#3b82f6')" onclick="spawnTokenAtCenter('hero', 'Guerreiro', '#3b82f6')" class="w-10 h-10 rounded-full bg-blue-900/80 border-2 border-blue-400 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Herói: Guerreiro">
+                        <i class="fa-solid fa-shield-halved text-blue-200 text-sm"></i>
+                    </div>
+                    <div draggable="true" ondragstart="selectTokenType(event, 'hero', 'Mago', '#8b5cf6')" onclick="spawnTokenAtCenter('hero', 'Mago', '#8b5cf6')" class="w-10 h-10 rounded-full bg-purple-900/80 border-2 border-purple-400 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Herói: Mago">
+                        <i class="fa-solid fa-hat-wizard text-purple-200 text-sm"></i>
+                    </div>
+                    <div draggable="true" ondragstart="selectTokenType(event, 'hero', 'Ladino', '#10b981')" onclick="spawnTokenAtCenter('hero', 'Ladino', '#10b981')" class="w-10 h-10 rounded-full bg-emerald-950 border-2 border-emerald-400 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Herói: Ladino">
+                        <i class="fa-solid fa-mask text-emerald-200 text-sm"></i>
+                    </div>
+                    <div draggable="true" ondragstart="selectTokenType(event, 'hero', 'Clérigo', '#eab308')" onclick="spawnTokenAtCenter('hero', 'Clérigo', '#eab308')" class="w-10 h-10 rounded-full bg-amber-950 border-2 border-amber-400 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Herói: Clérigo">
+                        <i class="fa-solid fa-ankh text-amber-200 text-sm"></i>
+                    </div>
+                    <div draggable="true" ondragstart="selectTokenType(event, 'boss', 'Barão Roderick', '#b91c1c')" onclick="spawnTokenAtCenter('boss', 'Barão Roderick', '#b91c1c')" class="w-10 h-10 rounded-full bg-blood-900 border-2 border-corvo-gold flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Chefe: Barão Roderick">
+                        <i class="fa-solid fa-crown text-corvo-gold text-sm"></i>
+                    </div>
+                    <div draggable="true" ondragstart="selectTokenType(event, 'enemy', 'Cultista', '#991b1b')" onclick="spawnTokenAtCenter('enemy', 'Cultista', '#991b1b')" class="w-10 h-10 rounded-full bg-blood-800 border-2 border-red-500 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Inimigo: Cultista">
+                        <i class="fa-solid fa-skull text-red-200 text-sm"></i>
+                    </div>
+                    <div draggable="true" ondragstart="selectTokenType(event, 'enemy', 'Besta da Névoa', '#7f1d1d')" onclick="spawnTokenAtCenter('enemy', 'Besta da Névoa', '#7f1d1d')" class="w-10 h-10 rounded-full bg-red-950 border-2 border-red-600 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Monstro: Besta da Névoa">
+                        <i class="fa-solid fa-wolf-pack-battalion text-red-300 text-sm"></i>
+                    </div>
+                    <div draggable="true" ondragstart="selectTokenType(event, 'npc', 'Aldeão', '#64748b')" onclick="spawnTokenAtCenter('npc', 'Aldeão', '#64748b')" class="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-400 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="NPC: Camponês">
+                        <i class="fa-solid fa-user text-slate-200 text-sm"></i>
+                    </div>
+                </div>
+                <button onclick="clearAllTokens()" class="text-[10px] text-red-400 hover:text-red-300 text-center pt-1 border-t border-gothic-800 transition">
+                    <i class="fa-solid fa-trash-can"></i> Limpar Tokens
+                </button>
+            </div>
+        </div>
+
+        <!-- Sidebar / Lore & DM Panel -->
+        <div id="sidebar" class="w-full sm:w-96 bg-gothic-900 border-l border-gothic-700 flex flex-col z-20 shadow-2xl transition-all duration-300 translate-x-0">
+            <!-- Sidebar Header Tabs -->
+            <div class="flex border-b border-gothic-700 bg-gothic-950">
+                <button onclick="switchTab('pois')" id="tab-btn-pois" class="flex-1 py-3 px-3 text-xs font-gothic font-bold text-corvo-gold border-b-2 border-corvo-gold bg-gothic-900 transition flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-map-location-dot"></i> Locais (POIs)
+                </button>
+                <button onclick="switchTab('lore')" id="tab-btn-lore" class="flex-1 py-3 px-3 text-xs font-gothic font-bold text-gray-400 hover:text-gray-200 transition flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-scroll"></i> Lore & Pacto
+                </button>
+                <button onclick="switchTab('gm')" id="tab-btn-gm" class="flex-1 py-3 px-3 text-xs font-gothic font-bold text-gray-400 hover:text-gray-200 transition flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-hat-wizard"></i> Notas do Mestre
+                </button>
+            </div>
+
+            <!-- Tab Contents -->
+            <div class="flex-1 overflow-y-auto p-4 space-y-4">
+                
+                <!-- POIs Tab -->
+                <div id="tab-pois" class="space-y-3">
+                    <div class="text-xs text-gray-400 mb-2">Clique em um local abaixo para centralizar no mapa e ler os detalhes táticos:</div>
+                    
+                    <!-- POI 1 -->
+                    <div onclick="focusPoi(1)" class="bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 rounded-lg p-3 cursor-pointer transition group shadow">
+                        <div class="flex items-center justify-between mb-1">
+                            <h3 class="font-gothic font-bold text-corvo-gold text-sm group-hover:underline flex items-center gap-2">
+                                <i class="fa-solid fa-chess-rook text-red-500"></i> Castelo Roderick
+                            </h3>
+                            <span class="text-[10px] bg-blood-900 text-red-200 px-2 py-0.5 rounded border border-red-700">Setor H8</span>
+                        </div>
+                        <p class="text-xs text-gray-300 line-clamp-2">A fortaleza cinzenta e decadente do Barão Roderick, com guaritas e salões gelados.</p>
+                    </div>
+
+                    <!-- POI 2 -->
+                    <div onclick="focusPoi(2)" class="bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 rounded-lg p-3 cursor-pointer transition group shadow">
+                        <div class="flex items-center justify-between mb-1">
+                            <h3 class="font-gothic font-bold text-corvo-gold text-sm group-hover:underline flex items-center gap-2">
+                                <i class="fa-solid fa-house-chimney-crack text-amber-500"></i> Povoado Névoa-Fria
+                            </h3>
+                            <span class="text-[10px] bg-gothic-900 text-amber-200 px-2 py-0.5 rounded border border-amber-800">Setor V12</span>
+                        </div>
+                        <p class="text-xs text-gray-300 line-clamp-2">Cabanas miseráveis sobre solo lamacento, habitadas por aldeões assustados.</p>
+                    </div>
+
+                    <!-- POI 3 -->
+                    <div onclick="focusPoi(3)" class="bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 rounded-lg p-3 cursor-pointer transition group shadow">
+                        <div class="flex items-center justify-between mb-1">
+                            <h3 class="font-gothic font-bold text-corvo-gold text-sm group-hover:underline flex items-center gap-2">
+                                <i class="fa-solid fa-tree text-emerald-600"></i> Floresta dos Sussurros
+                            </h3>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-700">Setor AJ15</span>
+                        </div>
+                        <p class="text-xs text-gray-300 line-clamp-2">Arvoredos contorcidos com vegetação escura, frutos estranhos e sussurros que ecoam nas brumas.</p>
+                    </div>
+
+                    <!-- POI 4 -->
+                    <div onclick="focusPoi(4)" class="bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 rounded-lg p-3 cursor-pointer transition group shadow">
+                        <div class="flex items-center justify-between mb-1">
+                            <h3 class="font-gothic font-bold text-corvo-gold text-sm group-hover:underline flex items-center gap-2">
+                                <i class="fa-solid fa-mountain text-slate-400"></i> Montanhas Estéreis
+                            </h3>
+                            <span class="text-[10px] bg-gothic-950 text-slate-300 px-2 py-0.5 rounded border border-slate-700">Setor L30</span>
+                        </div>
+                        <p class="text-xs text-gray-300 line-clamp-2">Picos rochosos e desfiladeiros perigosos infestados por bestas nebulosas.</p>
+                    </div>
+
+                    <!-- POI 5 -->
+                    <div onclick="focusPoi(5)" class="bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 rounded-lg p-3 cursor-pointer transition group shadow">
+                        <div class="flex items-center justify-between mb-1">
+                            <h3 class="font-gothic font-bold text-corvo-gold text-sm group-hover:underline flex items-center gap-2">
+                                <i class="fa-solid fa-skull-crossbones text-emerald-500"></i> Altar de Sangue Oculto
+                            </h3>
+                            <span class="text-[10px] bg-emerald-950 text-emerald-200 px-2 py-0.5 rounded border border-emerald-800">Setor AF32</span>
+                        </div>
+                        <p class="text-xs text-gray-300 line-clamp-2">Santuário profano cercado por megálitos de pedra negra onde o pacto de Roderick é mantido.</p>
+                    </div>
+
+                    <!-- POI 6 -->
+                    <div onclick="focusPoi(6)" class="bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 rounded-lg p-3 cursor-pointer transition group shadow">
+                        <div class="flex items-center justify-between mb-1">
+                            <h3 class="font-gothic font-bold text-corvo-gold text-sm group-hover:underline flex items-center gap-2">
+                                <i class="fa-solid fa-cross text-gray-400"></i> Cemitério Esquecido
+                            </h3>
+                            <span class="text-[10px] bg-slate-900 text-slate-300 px-2 py-0.5 rounded border border-slate-700">Setor Q24</span>
+                        </div>
+                        <p class="text-xs text-gray-300 line-clamp-2">Lápidas tombadas sobre solo pantanoso e névoa densa, local de atividade necromântica.</p>
+                    </div>
+                </div>
+
+                <!-- Lore Tab -->
+                <div id="tab-lore" class="space-y-4 hidden">
+                    <div class="bg-gothic-800/80 border border-gothic-700 rounded-lg p-3.5 space-y-2">
+                        <h3 class="font-gothic font-bold text-corvo-gold text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-feather text-corvo-gold"></i> A Maldição do Vale-Corvo
+                        </h3>
+                        <p class="text-xs text-gray-300 leading-relaxed">
+                            Cercado por picos estéreis e uma névoa que nunca se dissipa, o Baronato de Vale-Corvo sobreviveu séculos à fome apenas graças ao implacável <strong>Barão Roderick</strong>. No entanto, o preço da abundância das plantações verdejantes é pago em sangue e segredos inconfessáveis.
+                        </p>
+                    </div>
+
+                    <div class="bg-gothic-800/80 border border-gothic-700 rounded-lg p-3.5 space-y-2">
+                        <h3 class="font-gothic font-bold text-corvo-gold text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-handshake-angle text-red-400"></i> O Pacto Sombrio
+                        </h3>
+                        <p class="text-xs text-gray-300 leading-relaxed">
+                            Nas profundezas do Altar do Pacto, o Barão negociou com entidades das brumas primordiais. As colheitas crescem viçosas, mas os recém-nascidos do vilarejo frequentemente nascem mudos, com olhos cinzentos como a névoa, e corvos sem penas vigiam cada passo dos aventureiros.
+                        </p>
+                    </div>
+
+                    <div class="bg-gothic-800/80 border border-gothic-700 rounded-lg p-3.5 space-y-2">
+                        <h3 class="font-gothic font-bold text-corvo-gold text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-person-hiking text-emerald-400"></i> Mecânicas de Terreno (1.5m / Quadrado)
+                        </h3>
+                        <ul class="text-xs text-gray-300 space-y-1.5 list-disc pl-4">
+                            <li><strong>Névoa Espessa:</strong> Custa 2m de movimento por metro (terreno difícil) e concede camuflagem leve (+2 CA).</li>
+                            <li><strong>Campos Férteis:</strong> Terreno normal, mas sussurros causam desvantagem em testes de Percepção Passiva.</li>
+                            <li><strong>Montanhas Estéreis:</strong> Requer testes de Atletismo para escalar (DC 13). Quedas causam 1d6 de dano contundente a cada 3m (2 quadrados).</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- GM Notes Tab -->
+                <div id="tab-gm" class="space-y-4 hidden">
+                    <div class="bg-blood-950/60 border border-blood-800 rounded-lg p-3.5 space-y-2">
+                        <h3 class="font-gothic font-bold text-red-400 text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-triangle-exclamation"></i> Encontros Randômicos na Névoa
+                        </h3>
+                        <p class="text-xs text-gray-300">Role 1d6 a cada 2 horas de viagem ou ao entrar nas Montanhas Estéreis:</p>
+                        <ul class="text-xs text-gray-300 space-y-1 pl-4 list-disc">
+                            <li><strong>1-2:</strong> 1d4 Cultistas errantes transportando oferendas.</li>
+                            <li><strong>3-4:</strong> 1 Besta da Névoa (Estatísticas de Lobo Cruel com camuflagem na névoa).</li>
+                            <li><strong>5:</strong> Camponês fugitivo implorando por resgate.</li>
+                            <li><strong>6:</strong> Visão do Corvo Negro (Teste de Sabedoria DC 12 ou ganha 1 nível de exaustão por pavor).</li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-gothic-800 border border-gothic-700 rounded-lg p-3.5 space-y-2">
+                        <h3 class="font-gothic font-bold text-corvo-gold text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-key"></i> Segredos do Castelo & Altar
+                        </h3>
+                        <p class="text-xs text-gray-300 leading-relaxed">
+                            O Altar do Pacto pode ser destruído com magia sagrada de 3º círculo ou superior, mas isso fará com que os Campos Férteis apodreçam instantaneamente, iniciando uma Grande Fome no baronato. O Barão Roderick lutará até a morte para proteger o altar.
+                        </p>
+                    </div>
+
+                    <div class="bg-gothic-800 border border-gothic-700 rounded-lg p-3.5 space-y-2">
+                        <h3 class="font-gothic font-bold text-corvo-gold text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-dice-d20"></i> Ferramenta de Rolagem Rápida
+                        </h3>
+                        <div class="flex items-center space-x-2 pt-1">
+                            <button onclick="rollDice(20)" class="px-3 py-1.5 bg-gothic-700 hover:bg-gothic-600 rounded text-xs font-bold text-corvo-gold border border-gothic-500">
+                                D20
+                            </button>
+                            <button onclick="rollDice(6)" class="px-3 py-1.5 bg-gothic-700 hover:bg-gothic-600 rounded text-xs font-bold text-corvo-gold border border-gothic-500">
+                                1d6
+                            </button>
+                            <span id="dice-result" class="text-xs font-mono text-emerald-400 font-bold">Resultado: -</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- POI Details Modal -->
+    <div id="poi-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-gothic-900 border border-corvo-gold rounded-xl max-w-lg w-full p-6 shadow-2xl relative space-y-4">
+            <button onclick="closePoiModal()" class="absolute top-4 right-4 text-gray-400 hover:text-white text-lg">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+            <div class="flex items-center space-x-3 border-b border-gothic-700 pb-3">
+                <div id="modal-icon" class="w-10 h-10 rounded-lg bg-gothic-800 border border-corvo-gold flex items-center justify-center text-corvo-gold text-lg">
+                    <i class="fa-solid fa-landmark"></i>
+                </div>
+                <div>
+                    <h2 id="modal-title" class="font-gothic font-bold text-lg text-corvo-gold">Título do Local</h2>
+                    <p id="modal-subtitle" class="text-xs text-gray-400">Coordenadas: Setor A1</p>
+                </div>
+            </div>
+            <div id="modal-body" class="text-xs text-gray-300 leading-relaxed space-y-2">
+                Conteúdo descritivo detalhado do local...
+            </div>
+            <div class="flex justify-end pt-2 border-t border-gothic-800">
+                <button onclick="closePoiModal()" class="px-4 py-2 bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 rounded text-xs font-gothic text-corvo-gold">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Application Logic -->
+    <script>
+        // Canvas & Tactical Map Setup
+        const canvas = document.getElementById('tactical-map');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('map-container');
+
+        // Map dimensions (grid squares)
+        const GRID_COLS = 50;
+        const GRID_ROWS = 40;
+        let tileSize = 40; // Base pixel size per 1.5m square
+
+        // Map Mode: 'overworld' or 'dungeon'
+        let currentMapMode = 'overworld';
+
+        // Fog of War (Dungeon Vision Grid)
+        // 0 = Covered in Darkness (Unexplored/Pitch Black)
+        // 1 = Revealed / Visible
+        let dungeonFog = [];
+        let brushRadius = 3;
+        let cryptEntrance = { x: 8, y: 8 };
+        let movingCryptEntrance = false;
+        let visionRadius = 4;
+        let magicVisionEnabled = false;
+
+        function initDungeonFog(defaultValue = 0) {
+            dungeonFog = [];
+            for (let x = 0; x < GRID_COLS; x++) {
+                dungeonFog[x] = [];
+                for (let y = 0; y < GRID_ROWS; y++) {
+                    dungeonFog[x][y] = defaultValue;
+                }
+            }
+            // Pre-reveal starting entrance room
+            for (let x = 20; x <= 30; x++) {
+                for (let y = 30; y <= 38; y++) {
+                    dungeonFog[x][y] = 1;
+                }
+            }
+        }
+        initDungeonFog(0);
+
+        // Map detail structures
+        const trees = [];
+        const rocks = [];
+        const stumps = [];
+
+        function initMapDetails() {
+            for (let x = 0; x < GRID_COLS; x++) {
+                for (let y = 0; y < GRID_ROWS; y++) {
+                    const hash = (Math.sin(x * 12.9898 + y * 78.233) * 43758.5453) % 1;
+                    if (x >= 30 && x <= 46 && y >= 8 && y <= 24) {
+                        if (hash > 0.45) trees.push({ x, y, type: hash > 0.75 ? 'pine' : 'twisted', size: 0.8 + (hash * 0.4) });
+                    } else if ((x >= 6 && x <= 18 && y >= 22 && y <= 36) || x < 4 || y < 4 || x >= GRID_COLS - 3 || y >= GRID_ROWS - 3) {
+                        if (hash > 0.7) rocks.push({ x, y, size: 0.5 + (hash * 0.5) });
+                        else if (hash > 0.55 && hash <= 0.7) trees.push({ x, y, type: 'dead', size: 0.7 + (hash * 0.3) });
+                    } else {
+                        if (hash > 0.91) stumps.push({ x, y });
+                        else if (hash > 0.85) trees.push({ x, y, type: 'dead', size: 0.6 + (hash * 0.4) });
+                        else if (hash > 0.82) rocks.push({ x, y, size: 0.4 + (hash * 0.4) });
+                    }
+                }
+            }
+        }
+        initMapDetails();
+
+        // Viewport state
+        let scale = 1;
+        let offsetX = 0;
+        let offsetY = 0;
+        let isDragging = false;
+        let startX, startY;
+        let currentTool = 'pan'; // 'pan', 'token', 'reveal', 'hide'
+        let showGridLines = true;
+        let showMistEffect = true;
+
+        // POI definitions with grid coordinates
+        const pois = [
+            { id: 1, name: "Castelo Roderick", x: 8, y: 8, col: 'H', row: 8, icon: 'fa-chess-rook', desc: "A sombria fortaleza do Barão Roderick. O portal para a Cripta dos Pactos fica sob as masmorras." },
+            { id: 2, name: "Povoado Névoa-Fria", x: 22, y: 12, col: 'V', row: 12, icon: 'fa-house-chimney-crack', desc: "Casas decrépitas de madeira podre sobre estrados de barro. Os aldeões vivem amendrontados." },
+            { id: 3, name: "Floresta dos Sussurros", x: 36, y: 15, col: 'AJ', row: 15, icon: 'fa-tree', desc: "Um bolsão de pinheiros negros e árvores retorcidas. Folhas sussurram os nomes dos mortos." },
+            { id: 4, name: "Montanhas Estéreis", x: 12, y: 30, col: 'L', row: 30, icon: 'fa-mountain', desc: "Penhascos de granito escuro, desfiladeiros gelados e pedregulhos instáveis." },
+            { id: 5, name: "Altar de Sangue Oculto", x: 32, y: 32, col: 'AF', row: 32, icon: 'fa-skull-crossbones', desc: "Megálitos negros dispostos em círculo. Gravuras esmeralda brilham no chão profano." },
+            { id: 6, name: "Cemitério Esquecido", x: 17, y: 24, col: 'Q', row: 24, icon: 'fa-cross', desc: "Lápidas tombadas cobertas por musgo escuro e solo fofo de sepulturas profanadas." }
+        ];
+
+        // Tokens
+        let tokens = [
+            { id: 1, type: 'hero', name: 'Guerreiro', color: '#3b82f6', x: 21, y: 13, icon: 'fa-shield-halved' },
+            { id: 2, type: 'hero', name: 'Mago', color: '#8b5cf6', x: 20, y: 14, icon: 'fa-hat-wizard' },
+            { id: 3, type: 'hero', name: 'Ladino', color: '#10b981', x: 22, y: 14, icon: 'fa-mask' },
+            { id: 4, type: 'hero', name: 'Clérigo', color: '#eab308', x: 21, y: 15, icon: 'fa-ankh' },
+            { id: 5, type: 'boss', name: 'Barão Roderick', color: '#b91c1c', x: 8, y: 9, icon: 'fa-crown' },
+            { id: 6, type: 'enemy', name: 'Cultista', color: '#991b1b', x: 31, y: 31, icon: 'fa-skull' },
+            { id: 7, type: 'enemy', name: 'Besta da Névoa', color: '#7f1d1d', x: 14, y: 28, icon: 'fa-wolf-pack-battalion' }
+        ];
+
+        let draggedTokenId = null;
+
+        // Switch Map Mode
+        function switchMapMode(mode) {
+            currentMapMode = mode;
+            
+            const btnOverworld = document.getElementById('btn-mode-overworld');
+            const btnDungeon = document.getElementById('btn-mode-dungeon');
+            const fowTools = document.getElementById('fow-tools');
+            const dungeonQuick = document.getElementById('dungeon-quick-controls');
+
+            if (mode === 'overworld') {
+                btnOverworld.className = "px-2.5 py-1 rounded text-xs font-gothic font-bold bg-blood-900 text-corvo-gold border border-corvo-gold shadow";
+                btnDungeon.className = "px-2.5 py-1 rounded text-xs font-gothic font-bold text-gray-400 hover:text-white transition";
+                fowTools.classList.add('hidden');
+                dungeonQuick.classList.add('hidden');
+                if (currentTool === 'reveal' || currentTool === 'hide') setTool('pan');
+            } else {
+                btnDungeon.className = "px-2.5 py-1 rounded text-xs font-gothic font-bold bg-blood-900 text-corvo-gold border border-corvo-gold shadow";
+                btnOverworld.className = "px-2.5 py-1 rounded text-xs font-gothic font-bold text-gray-400 hover:text-white transition";
+                fowTools.classList.remove('hidden');
+                dungeonQuick.classList.remove('hidden');
+            }
+            drawMap();
+        }
+
+        function setTool(tool) {
+            currentTool = tool;
+            ['pan', 'token', 'reveal', 'hide'].forEach(t => {
+                const el = document.getElementById(`tool-${t}`);
+                if (el) el.classList.toggle('bg-blood-900', tool === t);
+            });
+            container.style.cursor = (tool === 'pan') ? 'grab' : ((tool === 'reveal' || tool === 'hide') ? 'cell' : 'crosshair');
+        }
+
+        // Apply Fog of War Paint
+        function applyFogBrush(gridX, gridY, revealState) {
+            for (let dx = -brushRadius + 1; dx < brushRadius; dx++) {
+                for (let dy = -brushRadius + 1; dy < brushRadius; dy++) {
+                    const nx = gridX + dx;
+                    const ny = gridY + dy;
+                    if (nx >= 0 && nx < GRID_COLS && ny >= 0 && ny < GRID_ROWS) {
+                        dungeonFog[nx][ny] = revealState;
+                    }
+                }
+            }
+            drawMap();
+        }
+
+        function revealAllFog() { initDungeonFog(1); drawMap(); }
+        function hideAllFog() { initDungeonFog(0); drawMap(); }
+
+        function setVisionRadius(value) {
+            visionRadius = Math.max(2, Math.min(12, parseInt(value, 10) || 4));
+            const label = document.getElementById('vision-radius-label');
+            if (label) label.textContent = `${visionRadius}q`;
+            if (currentMapMode === 'dungeon') updateTorchVision();
+            drawMap();
+        }
+
+        function toggleMagicVision() {
+            magicVisionEnabled = !magicVisionEnabled;
+            const btn = document.getElementById('btn-magic-vision');
+            if (btn) {
+                btn.classList.toggle('ring-2', magicVisionEnabled);
+                btn.classList.toggle('ring-violet-300', magicVisionEnabled);
+                btn.innerHTML = magicVisionEnabled
+                    ? '<i class="fa-solid fa-wand-magic-sparkles"></i> Magia Ativa'
+                    : '<i class="fa-solid fa-wand-magic-sparkles"></i> Visão Mágica';
+            }
+            updateTorchVision();
+            drawMap();
+        }
+
+        function updateTorchVision() {
+            if (currentMapMode !== 'dungeon') return;
+            const radius = magicVisionEnabled ? Math.min(16, visionRadius * 2) : visionRadius;
+            // A luz acompanha os tokens de herói; as áreas já exploradas continuam reveladas.
+            tokens.filter(t => t.type === 'hero').forEach(t => {
+                for (let dx = -radius; dx <= radius; dx++) {
+                    for (let dy = -radius; dy <= radius; dy++) {
+                        if (dx * dx + dy * dy <= radius * radius) {
+                            const nx = t.x + dx, ny = t.y + dy;
+                            if (nx >= 0 && nx < GRID_COLS && ny >= 0 && ny < GRID_ROWS) dungeonFog[nx][ny] = 1;
+                        }
+                    }
+                }
+            });
+        }
+
+        function autoRevealTokens() {
+            updateTorchVision();
+            drawMap();
+        }
+
+        function toggleMoveCryptEntrance() {
+            movingCryptEntrance = !movingCryptEntrance;
+            const btn = document.getElementById('btn-move-crypt');
+            if (btn) {
+                btn.classList.toggle('bg-blood-900', movingCryptEntrance);
+                btn.classList.toggle('text-corvo-gold', movingCryptEntrance);
+                btn.innerHTML = movingCryptEntrance
+                    ? '<i class="fa-solid fa-location-crosshairs"></i> Clique no local'
+                    : '<i class="fa-solid fa-location-dot"></i> <span class="hidden sm:inline">Mover Cripta</span>';
+            }
+            container.style.cursor = movingCryptEntrance ? 'crosshair' : (currentTool === 'pan' ? 'grab' : 'crosshair');
+        }
+
+        // Draw Overworld or Dungeon
+        function drawMap() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.scale(scale, scale);
+
+            if (currentMapMode === 'overworld') {
+                drawOverworldTerrain();
+            } else {
+                drawDungeonTerrain();
+            }
+
+            // Atualiza a luz dos heróis antes de desenhar os tokens e a névoa.
+            if (currentMapMode === 'dungeon') updateTorchVision();
+
+            // Draw Tokens
+            tokens.forEach(token => {
+                // In dungeon mode, only draw tokens if cell is revealed or GM is viewing
+                const isRevealed = (currentMapMode === 'overworld') || (dungeonFog[token.x] && dungeonFog[token.x][token.y] === 1);
+                
+                const tx = token.x * tileSize + tileSize / 2;
+                const ty = token.y * tileSize + tileSize / 2;
+                const radius = tileSize * 0.38;
+
+                if (!isRevealed) {
+                    // Draw dim outline for GM
+                    ctx.beginPath();
+                    ctx.arc(tx, ty, radius, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(50,50,50,0.5)';
+                    ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+                    ctx.stroke();
+                    return;
+                }
+
+                ctx.beginPath();
+                ctx.arc(tx + 2, ty + 2, radius, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(tx, ty, radius, 0, Math.PI * 2);
+                ctx.fillStyle = token.color;
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#ffffff';
+                ctx.stroke();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = 'bold 10px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(token.name.substring(0, 3).toUpperCase(), tx, ty);
+            });
+
+            // Draw Fog of War in Dungeon Mode
+            if (currentMapMode === 'dungeon') {
+                drawDungeonFogOverlay();
+            }
+
+            ctx.restore();
+            updateScaleBar();
+        }
+
+        // Overworld Renderer
+        function drawOverworldTerrain() {
+            for (let x = 0; x < GRID_COLS; x++) {
+                for (let y = 0; y < GRID_ROWS; y++) {
+                    const px = x * tileSize;
+                    const py = y * tileSize;
+
+                    let terrainColor = '#2b3123';
+                    if ((x >= 6 && x <= 36 && Math.abs(y - 12 - Math.sin(x * 0.2) * 2) < 1.2) ||
+                        (y >= 12 && y <= 32 && Math.abs(x - 22 - Math.cos(y * 0.2) * 2) < 1.2)) {
+                        terrainColor = '#3a3124';
+                    } else if (x >= 5 && x <= 12 && y >= 5 && y <= 12) {
+                        terrainColor = '#1f242d';
+                    } else if (x >= 18 && x <= 26 && y >= 10 && y <= 16) {
+                        terrainColor = '#2e281e';
+                    } else if (x >= 30 && x <= 46 && y >= 8 && y <= 24) {
+                        terrainColor = '#1e281b';
+                    } else if ((x >= 6 && x <= 18 && y >= 22 && y <= 36) || x < 4 || y < 4 || x >= GRID_COLS - 3 || y >= GRID_ROWS - 3) {
+                        terrainColor = '#242523';
+                    } else if (x >= 28 && x <= 36 && y >= 28 && y <= 36) {
+                        terrainColor = '#15241b';
+                    } else if (x >= 15 && x <= 19 && y >= 22 && y <= 26) {
+                        terrainColor = '#222620';
+                    }
+
+                    ctx.fillStyle = terrainColor;
+                    ctx.fillRect(px, py, tileSize, tileSize);
+
+                    if ((x + y) % 3 === 0) {
+                        ctx.fillStyle = 'rgba(0,0,0,0.12)';
+                        ctx.fillRect(px + 4, py + 4, tileSize - 8, tileSize - 8);
+                    }
+
+                    if (showGridLines) {
+                        ctx.strokeStyle = 'rgba(60, 75, 55, 0.35)';
+                        ctx.lineWidth = 0.8;
+                        ctx.strokeRect(px, py, tileSize, tileSize);
+                    }
+                }
+            }
+
+            // Draw Rocks, Stumps, Trees
+            rocks.forEach(r => {
+                const px = r.x * tileSize + tileSize / 2;
+                const py = r.y * tileSize + tileSize / 2;
+                const rad = (tileSize / 3) * r.size;
+                ctx.beginPath();
+                ctx.arc(px, py, rad, 0, Math.PI * 2);
+                ctx.fillStyle = '#3f423d';
+                ctx.fill();
+                ctx.strokeStyle = '#1d201c';
+                ctx.stroke();
+            });
+
+            stumps.forEach(s => {
+                const px = s.x * tileSize + tileSize / 2;
+                const py = s.y * tileSize + tileSize / 2;
+                ctx.beginPath();
+                ctx.arc(px, py, tileSize * 0.22, 0, Math.PI * 2);
+                ctx.fillStyle = '#4a3728';
+                ctx.fill();
+            });
+
+            trees.forEach(t => {
+                const px = t.x * tileSize + tileSize / 2;
+                const py = t.y * tileSize + tileSize / 2;
+                const size = tileSize * t.size;
+
+                if (t.type === 'pine') {
+                    ctx.beginPath();
+                    ctx.arc(px, py, size * 0.45, 0, Math.PI * 2);
+                    ctx.fillStyle = '#0f2214';
+                    ctx.fill();
+                } else if (t.type === 'twisted') {
+                    ctx.beginPath();
+                    ctx.arc(px, py, size * 0.4, 0, Math.PI * 2);
+                    ctx.fillStyle = '#2d3319';
+                    ctx.fill();
+                } else {
+                    ctx.beginPath();
+                    ctx.moveTo(px - size * 0.3, py - size * 0.3);
+                    ctx.lineTo(px + size * 0.3, py + size * 0.3);
+                    ctx.strokeStyle = '#1a1816';
+                    ctx.lineWidth = 2.5;
+                    ctx.stroke();
+                }
+            });
+
+            // POIs
+            pois.forEach(poi => {
+                const px = poi.x * tileSize + tileSize / 2;
+                const py = poi.y * tileSize + tileSize / 2;
+                ctx.beginPath();
+                ctx.arc(px, py, tileSize * 0.85, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(212, 175, 55, 0.18)';
+                ctx.fill();
+                ctx.strokeStyle = '#d4af37';
+                ctx.stroke();
+
+                ctx.fillStyle = '#d4af37';
+                ctx.font = 'bold 15px Cinzel, serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('📍', px, py - 6);
+                ctx.fillStyle = '#fef3c7';
+                ctx.font = 'bold 10px Inter, sans-serif';
+                ctx.fillText(poi.name, px, py + 14);
+            });
+
+            // Entrada da cripta reposicionável pelo botão "Mover Cripta".
+            const ePx = cryptEntrance.x * tileSize + tileSize / 2;
+            const ePy = cryptEntrance.y * tileSize + tileSize / 2;
+            ctx.beginPath();
+            ctx.arc(ePx, ePy, tileSize * 0.6, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(185, 28, 28, 0.4)';
+            ctx.fill();
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 10px Inter, sans-serif';
+            ctx.fillText("ENTRADA DA CRIPTA", ePx, ePy - 12);
+        }
+
+        // Dungeon Renderer
+        function drawDungeonTerrain() {
+            for (let x = 0; x < GRID_COLS; x++) {
+                for (let y = 0; y < GRID_ROWS; y++) {
+                    const px = x * tileSize;
+                    const py = y * tileSize;
+
+                    // Dungeon Architecture Layout
+                    // Rooms & Corridors vs Solid Rock Walls
+                    let isRoom = false;
+                    let isWall = false;
+                    let isSpecial = '';
+
+                    // Entrance Hall (South)
+                    if (x >= 20 && x <= 30 && y >= 30 && y <= 38) isRoom = true;
+                    // Main Corridor (North-South)
+                    else if (x >= 23 && x <= 27 && y >= 10 && y <= 30) isRoom = true;
+                    // Ritual Room (Center North)
+                    else if (x >= 15 && x <= 35 && y >= 5 && y <= 15) { isRoom = true; isSpecial = 'ritual'; }
+                    // West Prison Cells
+                    else if (x >= 8 && x <= 18 && y >= 20 && y <= 28) { isRoom = true; isSpecial = 'prison'; }
+                    // Corridor West
+                    else if (x >= 18 && x <= 23 && y >= 23 && y <= 25) isRoom = true;
+                    // East Crypt Vault
+                    else if (x >= 32 && x <= 42 && y >= 20 && y <= 28) { isRoom = true; isSpecial = 'crypt'; }
+                    // Corridor East
+                    else if (x >= 27 && x <= 32 && y >= 23 && y <= 25) isRoom = true;
+
+                    if (isRoom) {
+                        if (isSpecial === 'ritual') ctx.fillStyle = '#1e1b2e'; // Dark Arcane Purple
+                        else if (isSpecial === 'prison') ctx.fillStyle = '#1b2024'; // Cold Slate
+                        else if (isSpecial === 'crypt') ctx.fillStyle = '#221c1a'; // Bloody Tomb
+                        else ctx.fillStyle = '#1c1f26'; // Dark Stone Floor
+
+                        ctx.fillRect(px, py, tileSize, tileSize);
+
+                        // Stone Flagstone Pattern
+                        ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+                        ctx.lineWidth = 0.5;
+                        ctx.strokeRect(px + 2, py + 2, tileSize - 4, tileSize - 4);
+
+                        if (showGridLines) {
+                            ctx.strokeStyle = 'rgba(80, 90, 110, 0.25)';
+                            ctx.lineWidth = 0.8;
+                            ctx.strokeRect(px, py, tileSize, tileSize);
+                        }
+                    } else {
+                        // Solid Unexcavated Rock Wall
+                        ctx.fillStyle = '#0d0f12';
+                        ctx.fillRect(px, py, tileSize, tileSize);
+                        ctx.fillStyle = '#08090b';
+                        ctx.fillRect(px + 3, py + 3, tileSize - 6, tileSize - 6);
+                    }
+                }
+            }
+
+            // Dungeon Decorative Elements (Torches, Sarcophagi, Ritual Circles)
+            // Ritual Circle in North Room
+            const rcX = 25 * tileSize + tileSize / 2;
+            const rcY = 10 * tileSize + tileSize / 2;
+            ctx.beginPath();
+            ctx.arc(rcX, rcY, tileSize * 2.5, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.fillStyle = '#ef4444';
+            ctx.font = 'bold 12px Cinzel, serif';
+            ctx.textAlign = 'center';
+            ctx.fillText("ALTAR DO PACTO", rcX, rcY);
+
+            // Sarcophagi in Crypt (East Room)
+            [ {x:35, y:22}, {x:39, y:22}, {x:35, y:26}, {x:39, y:26} ].forEach(s => {
+                ctx.fillStyle = '#3a3d45';
+                ctx.fillRect(s.x * tileSize + 4, s.y * tileSize + 4, tileSize - 8, tileSize - 8);
+                ctx.strokeStyle = '#6b7280';
+                ctx.strokeRect(s.x * tileSize + 4, s.y * tileSize + 4, tileSize - 8, tileSize - 8);
+            });
+
+            // Torches (Glowing Braziers)
+            const torches = [{x:21,y:31},{x:29,y:31},{x:24,y:12},{x:26,y:12},{x:16,y:6},{x:34,y:6}];
+            torches.forEach(t => {
+                const tx = t.x * tileSize + tileSize / 2;
+                const ty = t.y * tileSize + tileSize / 2;
+                
+                // Glow
+                ctx.beginPath();
+                ctx.arc(tx, ty, tileSize * 0.8, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(245, 158, 11, 0.25)';
+                ctx.fill();
+
+                // Torch Center
+                ctx.beginPath();
+                ctx.arc(tx, ty, 4, 0, Math.PI * 2);
+                ctx.fillStyle = '#f59e0b';
+                ctx.fill();
+            });
+
+            // Entrance Stairs Back to Surface
+            const stX = 25 * tileSize + tileSize / 2;
+            const stY = 37 * tileSize + tileSize / 2;
+            ctx.fillStyle = '#d4af37';
+            ctx.font = 'bold 11px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText("▲ ESCADAS DE SAÍDA", stX, stY);
+        }
+
+        // Draw Fog of War Layer
+        function drawDungeonFogOverlay() {
+            for (let x = 0; x < GRID_COLS; x++) {
+                for (let y = 0; y < GRID_ROWS; y++) {
+                    if (dungeonFog[x][y] === 0) {
+                        const px = x * tileSize;
+                        const py = y * tileSize;
+                        ctx.fillStyle = 'rgba(5, 6, 8, 0.98)';
+                        ctx.fillRect(px, py, tileSize, tileSize);
+                    }
+                }
+            }
+        }
+
+        // Mouse Interactions for Pan, Tokens, and Fog Painting
+        container.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX - offsetX;
+            startY = e.clientY - offsetY;
+
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = (e.clientX - rect.left - offsetX) / scale;
+            const mouseY = (e.clientY - rect.top - offsetY) / scale;
+            const gridX = Math.floor(mouseX / tileSize);
+            const gridY = Math.floor(mouseY / tileSize);
+
+            if (movingCryptEntrance && currentMapMode === 'overworld' && gridX >= 0 && gridX < GRID_COLS && gridY >= 0 && gridY < GRID_ROWS) {
+                cryptEntrance = { x: gridX, y: gridY };
+                movingCryptEntrance = false;
+                const moveBtn = document.getElementById('btn-move-crypt');
+                if (moveBtn) {
+                    moveBtn.classList.remove('bg-blood-900', 'text-corvo-gold');
+                    moveBtn.innerHTML = '<i class="fa-solid fa-location-dot"></i> <span class="hidden sm:inline">Mover Cripta</span>';
+                }
+                drawMap();
+                return;
+            }
+
+            if (currentTool === 'reveal' && currentMapMode === 'dungeon') {
+                applyFogBrush(gridX, gridY, 1);
+            } else if (currentTool === 'hide' && currentMapMode === 'dungeon') {
+                applyFogBrush(gridX, gridY, 0);
+            } else if (currentTool === 'token') {
+                const clickedToken = tokens.find(t => t.x === gridX && t.y === gridY);
+                if (clickedToken) {
+                    draggedTokenId = clickedToken.id;
+                }
+            }
+        });
+
+        container.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = (e.clientX - rect.left - offsetX) / scale;
+            const mouseY = (e.clientY - rect.top - offsetY) / scale;
+            const gridX = Math.floor(mouseX / tileSize);
+            const gridY = Math.floor(mouseY / tileSize);
+
+            if (gridX >= 0 && gridX < GRID_COLS && gridY >= 0 && gridY < GRID_ROWS) {
+                const colLetter = getColumnLetter(gridX);
+                document.getElementById('coord-display').innerText = `${colLetter}${gridY + 1}`;
+                document.getElementById('hover-info').classList.remove('hidden');
+            } else {
+                document.getElementById('hover-info').classList.add('hidden');
+            }
+
+            if (!isDragging) return;
+
+            if (currentTool === 'reveal' && currentMapMode === 'dungeon') {
+                applyFogBrush(gridX, gridY, 1);
+            } else if (currentTool === 'hide' && currentMapMode === 'dungeon') {
+                applyFogBrush(gridX, gridY, 0);
+            } else if (currentTool === 'pan' || !draggedTokenId) {
+                offsetX = e.clientX - startX;
+                offsetY = e.clientY - startY;
+                drawMap();
+            } else if (currentTool === 'token' && draggedTokenId !== null) {
+                if (gridX >= 0 && gridX < GRID_COLS && gridY >= 0 && gridY < GRID_ROWS) {
+                    const token = tokens.find(t => t.id === draggedTokenId);
+                    if (token) {
+                        token.x = gridX;
+                        token.y = gridY;
+
+                        // Check if stepping on Dungeon Entrance in Castle (8,8)
+                        if (currentMapMode === 'overworld' && Math.abs(gridX - cryptEntrance.x) <= 1 && Math.abs(gridY - cryptEntrance.y) <= 1) {
+                            // Ao entrar, posiciona os heróis na sala de entrada da cripta.
+                            let heroIndex = 0;
+                            tokens.filter(t => t.type === 'hero').forEach(t => {
+                                t.x = 24 + (heroIndex % 3);
+                                t.y = 35 + Math.floor(heroIndex / 3);
+                                heroIndex++;
+                            });
+                            switchMapMode('dungeon');
+                        }
+                        // Ao sair, devolve os heróis para a entrada reposicionada no mapa do vale.
+                        else if (currentMapMode === 'dungeon' && gridX >= 24 && gridX <= 26 && gridY >= 36 && gridY <= 38) {
+                            tokens.filter(t => t.type === 'hero').forEach((t, i) => {
+                                t.x = Math.min(GRID_COLS - 1, cryptEntrance.x + (i % 2));
+                                t.y = Math.min(GRID_ROWS - 1, cryptEntrance.y + Math.floor(i / 2));
+                            });
+                            switchMapMode('overworld');
+                        }
+
+                        drawMap();
+                    }
+                }
+            }
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+            draggedTokenId = null;
+        });
+
+        container.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomFactor = 1.1;
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const oldScale = scale;
+            if (e.deltaY < 0) {
+                scale = Math.min(scale * zoomFactor, 3);
+            } else {
+                scale = Math.max(scale / zoomFactor, 0.4);
+            }
+
+            offsetX = mouseX - (mouseX - offsetX) * (scale / oldScale);
+            offsetY = mouseY - (mouseY - offsetY) * (scale / oldScale);
+            drawMap();
+        }, { passive: false });
+
+        function getColumnLetter(index) {
+            let letter = '';
+            index++;
+            while (index > 0) {
+                let remainder = (index - 1) % 26;
+                letter = String.fromCharCode(65 + remainder) + letter;
+                index = Math.floor((index - 1) / 26);
+            }
+            return letter;
+        }
+
+        function spawnTokenAtCenter(type, name, color) {
+            const centerX = Math.floor(GRID_COLS / 2);
+            const centerY = Math.floor(GRID_ROWS / 2);
+            const newToken = {
+                id: Date.now(),
+                type: type,
+                name: name,
+                color: color,
+                x: centerX + Math.floor(Math.random() * 3) - 1,
+                y: centerY + Math.floor(Math.random() * 3) - 1
+            };
+            tokens.push(newToken);
+            drawMap();
+        }
+
+        function selectTokenType(e, type, name, color) {
+            e.dataTransfer.setData('text/plain', JSON.stringify({ type, name, color }));
+        }
+
+        container.addEventListener('dragover', (e) => e.preventDefault());
+        container.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const dataStr = e.dataTransfer.getData('text/plain');
+            if (!dataStr) return;
+            const { type, name, color } = JSON.parse(dataStr);
+
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = (e.clientX - rect.left - offsetX) / scale;
+            const mouseY = (e.clientY - rect.top - offsetY) / scale;
+            const gridX = Math.floor(mouseX / tileSize);
+            const gridY = Math.floor(mouseY / tileSize);
+
+            if (gridX >= 0 && gridX < GRID_COLS && gridY >= 0 && gridY < GRID_ROWS) {
+                tokens.push({
+                    id: Date.now(),
+                    type,
+                    name,
+                    color,
+                    x: gridX,
+                    y: gridY
+                });
+                drawMap();
+            }
+        });
+
+        function clearAllTokens() {
+            tokens = [];
+            drawMap();
+        }
+
+        function focusPoi(poiId) {
+            const poi = pois.find(p => p.id === poiId);
+            if (!poi) return;
+
+            const targetPixelX = poi.x * tileSize;
+            const targetPixelY = poi.y * tileSize;
+            offsetX = canvas.width / 2 - targetPixelX * scale;
+            offsetY = canvas.height / 2 - targetPixelY * scale;
+            drawMap();
+
+            openPoiModal(poi);
+        }
+
+        function openPoiModal(poi) {
+            document.getElementById('modal-title').innerText = poi.name;
+            document.getElementById('modal-subtitle').innerText = `Setor: ${poi.col}${poi.row} (Escala 1.5m)`;
+            document.getElementById('modal-body').innerHTML = `
+                <p class="text-gray-200 font-medium mb-2">${poi.desc}</p>
+                <div class="bg-gothic-950 p-3 rounded border border-gothic-700 space-y-1">
+                    <div class="text-corvo-gold font-gothic font-bold text-xs">Detalhes Táticos & Aventura:</div>
+                    <p class="text-gray-300">Cada quadrado deste local mede 1.5m. Ideal para combates táticos e investigações perigosas sob a névoa do Barão Roderick.</p>
+                </div>
+            `;
+            document.getElementById('poi-modal').classList.remove('hidden');
+        }
+
+        function closePoiModal() {
+            document.getElementById('poi-modal').classList.add('hidden');
+        }
+
+        function switchTab(tabName) {
+            ['pois', 'lore', 'gm'].forEach(t => {
+                document.getElementById(`tab-${t}`).classList.add('hidden');
+                document.getElementById(`tab-btn-${t}`).classList.remove('border-b-2', 'border-corvo-gold', 'text-corvo-gold', 'bg-gothic-900');
+                document.getElementById(`tab-btn-${t}`).classList.add('text-gray-400');
+            });
+            document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+            document.getElementById(`tab-btn-${tabName}`).classList.add('border-b-2', 'border-corvo-gold', 'text-corvo-gold', 'bg-gothic-900');
+            document.getElementById(`tab-btn-${tabName}`).classList.remove('text-gray-400');
+        }
+
+        function rollDice(sides) {
+            const roll = Math.floor(Math.random() * sides) + 1;
+            document.getElementById('dice-result').innerText = `Rolagem (d${sides}): ${roll}`;
+        }
+
+        function toggleSidebar() {
+            const sb = document.getElementById('sidebar');
+            sb.classList.toggle('translate-x-full');
+            sb.classList.toggle('hidden');
+        }
+
+        // Canvas sizing and view controls (missing in the original file).
+        function resizeCanvas() {
+            const rect = container.getBoundingClientRect();
+            canvas.width = Math.max(1, Math.floor(rect.width));
+            canvas.height = Math.max(1, Math.floor(rect.height));
+            drawMap();
+        }
+
+        function resetView() {
+            const mapWidth = GRID_COLS * tileSize;
+            const mapHeight = GRID_ROWS * tileSize;
+
+            // Fit the whole map in the available area, without excessive zoom.
+            scale = Math.min(
+                1,
+                canvas.width / mapWidth,
+                canvas.height / mapHeight
+            );
+            scale = Math.max(0.4, scale);
+
+            offsetX = (canvas.width - mapWidth * scale) / 2;
+            offsetY = (canvas.height - mapHeight * scale) / 2;
+            drawMap();
+        }
+
+        function zoomIn() {
+            zoomAtCenter(1.1);
+        }
+
+        function zoomOut() {
+            zoomAtCenter(1 / 1.1);
+        }
+
+        function zoomAtCenter(factor) {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const oldScale = scale;
+            scale = Math.max(0.4, Math.min(3, scale * factor));
+            offsetX = centerX - (centerX - offsetX) * (scale / oldScale);
+            offsetY = centerY - (centerY - offsetY) * (scale / oldScale);
+            drawMap();
+        }
+
+        function toggleGrid() {
+            showGridLines = !showGridLines;
+            document.getElementById('btn-grid').classList.toggle('text-emerald-400', showGridLines);
+            document.getElementById('btn-grid').classList.toggle('text-gray-400', !showGridLines);
+            drawMap();
+        }
+
+        function toggleMist() {
+            showMistEffect = !showMistEffect;
+            const overlay = document.getElementById('mist-overlay');
+            overlay.style.display = showMistEffect ? '' : 'none';
+            document.getElementById('btn-mist').classList.toggle('text-emerald-400', showMistEffect);
+            document.getElementById('btn-mist').classList.toggle('text-gray-400', !showMistEffect);
+        }
+
+        function adjustMistDensity(value) {
+            document.getElementById('mist-overlay').style.opacity = String(Number(value));
+        }
+
+        function updateScaleBar() {
+            const label = document.getElementById('scale-meters');
+            if (label) {
+                const squares = 10;
+                const meters = (squares * 1.5).toLocaleString('pt-BR');
+                label.textContent = `${meters}m / ${squares}q`;
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            resetView();
+        });
+
+        window.onload = function() {
+            resizeCanvas();
+            resetView();
+        };
+    </script>
+</body>
+</html>
