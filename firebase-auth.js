@@ -96,6 +96,7 @@ async function enterWithUser(user) {
   window.firebaseRole = role;
   userLabel.textContent = `${user.displayName || user.email} · ${role === "master" ? "Mestre" : "Jogador"}`;
   userBar.classList.remove("hidden");
+  userBar.classList.add("flex");
   if (role === "master") {
     gate.classList.add("hidden");
     document.body.classList.remove("firebase-player-blocked");
@@ -115,6 +116,7 @@ onAuthStateChanged(auth, async (user) => {
     window.firebaseUser = null;
     window.firebaseRole = null;
     userBar.classList.add("hidden");
+    userBar.classList.remove("flex");
     document.getElementById("firebase-login-card").classList.remove("hidden");
     document.getElementById("firebase-player-not-ready").classList.add("hidden");
     gate.classList.remove("hidden");
