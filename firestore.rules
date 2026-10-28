@@ -12,9 +12,16 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'master';
     }
+    function validCharacter(name) {
+      return name in ['Guerreiro', 'Mago', 'Ladino', 'Clérigo'];
+    }
+    function validPosition(data) {
+      return data.map in ['overworld', 'dungeon']
+        && data.x is int && data.x >= 0 && data.x < 50
+        && data.y is int && data.y >= 0 && data.y < 40;
+    }
 
-    // Cada usuário pode ler seu próprio perfil. A inscrição pública nunca pode
-    // atribuir a si mesma o papel de mestre.
+    // Cadastro público pode criar apenas perfil de jogador.
     match /users/{uid} {
       allow read: if isSelf(uid) || isMaster();
       allow create: if isSelf(uid)
@@ -27,39 +34,56 @@ service cloud.firestore {
       allow delete: if isMaster();
     }
 
-    // Dados públicos da sessão: nunca coloque aqui tesouros ocultos, armadilhas
-    // secretas, notas do mestre ou estados de exploração privados.
+    // Estado global do mapa, posições de inimigos e configurações do mestre:
+    // leitura e escrita apenas do mestre.
     match /sessions/{sessionId} {
-      allow read: if signedIn();
-      allow write: if isMaster();
+      allow read, write: if isMaster();
     }
 
-    // Um jogador só pode ler e alterar o próprio personagem; o mestre pode
-    // administrar todos os personagens.
+    // Cada jogador pode ler e atualizar apenas o próprio personagem.
+    // O nome do personagem não pode ser alterado pelo próprio jogador depois do cadastro.
     match /players/{uid} {
       allow read: if isSelf(uid) || isMaster();
-      allow create, update: if isMaster()
+      allow create: if isMaster()
         || (isSelf(uid)
-          && request.resource.data.keys().hasOnly([
-            'uid', 'characterName', 'map', 'x', 'y', 'updatedAt'
-          ])
+          && request.resource.data.keys().hasOnly(['uid', 'characterName', 'map', 'x', 'y', 'updatedAt'])
+          && request.resource.data.keys().hasAll(['uid', 'characterName', 'map', 'x', 'y'])
           && request.resource.data.uid == request.auth.uid
-          && request.resource.data.characterName is string
-          && request.resource.data.characterName.size() <= 60
-          && request.resource.data.map in ['overworld', 'dungeon']
-          && request.resource.data.x is int
-          && request.resource.data.y is int);
+          && validCharacter(request.resource.data.characterName)
+          && validPosition(request.resource.data));
+      allow update: if isMaster()
+        || (isSelf(uid)
+          && request.resource.data.keys().hasOnly(['uid', 'characterName', 'map', 'x', 'y', 'updatedAt'])
+          && request.resource.data.uid == resource.data.uid
+          && request.resource.data.characterName == resource.data.characterName
+          && validCharacter(request.resource.data.characterName)
+          && validPosition(request.resource.data));
       allow delete: if isMaster();
     }
 
-    // Exploração persistente individual. O jogador só altera a própria névoa.
+    // Exploração individual: cada jogador acessa somente seu próprio estado;
+    // o mestre pode consultar e administrar todos.
     match /exploration/{uid} {
       allow read, create, update: if isSelf(uid) || isMaster();
       allow delete: if isMaster();
     }
 
-    // Conteúdo secreto: leitura e escrita exclusivas do mestre.
+    // O mestre publica apenas os elementos que cada personagem pode enxergar.
+    // Jogadores não podem forjar sua lista de tokens visíveis nem suas descobertas.
+    match /visibleTokens/{uid} {
+      allow read: if isSelf(uid) || isMaster();
+      allow write: if isMaster();
+    }
+    match /discoveries/{uid} {
+      allow read: if isSelf(uid) || isMaster();
+      allow write: if isMaster();
+    }
+
+    // Segredos, tesouros, pistas e notas secretas do mestre.
     match /treasures/{treasureId} {
+      allow read, write: if isMaster();
+    }
+    match /gmNotes/{noteId} {
       allow read, write: if isMaster();
     }
 
