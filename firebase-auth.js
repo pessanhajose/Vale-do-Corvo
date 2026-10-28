@@ -16,6 +16,8 @@ const emailInput = document.getElementById("firebase-email");
 const passwordInput = document.getElementById("firebase-password");
 const nameInput = document.getElementById("firebase-display-name");
 const nameWrap = document.getElementById("firebase-name-wrap");
+const characterWrap = document.getElementById("firebase-character-wrap");
+const characterSelect = document.getElementById("firebase-character-name");
 const message = document.getElementById("firebase-auth-message");
 const submitButton = document.getElementById("firebase-auth-submit");
 const modeButton = document.getElementById("firebase-auth-mode");
@@ -33,6 +35,7 @@ function showMode(nextMode) {
   mode = nextMode;
   const registering = mode === "register";
   nameWrap.classList.toggle("hidden", !registering);
+  characterWrap.classList.toggle("hidden", !registering);
   nameInput.required = registering;
   submitButton.textContent = registering ? "Criar conta" : "Entrar";
   modeButton.textContent = registering ? "Já tenho conta — entrar" : "Criar uma conta";
@@ -57,6 +60,20 @@ form.addEventListener("submit", async (event) => {
         role: "player",
         displayName: displayName || email.split("@")[0],
         createdAt: serverTimestamp()
+      });
+      const initialPositions = {
+        "Guerreiro": { x: 21, y: 13 },
+        "Mago": { x: 20, y: 14 },
+        "Ladino": { x: 22, y: 14 },
+        "Clérigo": { x: 21, y: 15 }
+      };
+      const characterName = characterSelect.value;
+      await setDoc(doc(db, "players", credential.user.uid), {
+        uid: credential.user.uid,
+        characterName,
+        map: "overworld",
+        ...initialPositions[characterName],
+        updatedAt: serverTimestamp()
       });
     } else {
       credential = await signInWithEmailAndPassword(auth, email, password);
@@ -92,6 +109,25 @@ async function enterWithUser(user) {
     profileSnap = await getDoc(profileRef);
   }
   const role = profileSnap.data()?.role || "player";
+  if (role === "player") {
+    const playerRef = doc(db, "players", user.uid);
+    const playerSnap = await getDoc(playerRef);
+    if (!playerSnap.exists()) {
+      const validNames = ["Guerreiro", "Mago", "Ladino", "Clérigo"];
+      const displayName = user.displayName || "";
+      const characterName = validNames.includes(displayName) ? displayName : "Guerreiro";
+      const initialPositions = {
+        "Guerreiro": { x: 21, y: 13 },
+        "Mago": { x: 20, y: 14 },
+        "Ladino": { x: 22, y: 14 },
+        "Clérigo": { x: 21, y: 15 }
+      };
+      await setDoc(playerRef, {
+        uid: user.uid, characterName, map: "overworld",
+        ...initialPositions[characterName], updatedAt: serverTimestamp()
+      });
+    }
+  }
   window.firebaseUser = user;
   window.firebaseRole = role;
   userLabel.textContent = `${user.displayName || user.email} · ${role === "master" ? "Mestre" : "Jogador"}`;
