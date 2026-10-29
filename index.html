@@ -98,6 +98,7 @@
         }
     </style>
 <style>
+body.firebase-player #player-view-controls{display:none!important}
 #treasure-panel{max-height:82vh;overflow:auto} .treasure-card{border:1px solid #51443b;background:rgba(20,20,25,.94);border-radius:.6rem;padding:.7rem;margin:.5rem 0}
 .treasure-marker{font: bold 12px Inter,sans-serif;text-align:center;}
 body.player-view #token-tray, body.player-view #sidebar, body.player-view #dungeon-quick-controls, body.player-view #fow-tools, body.player-view #btn-move-crypt, body.player-view #btn-grid, body.player-view #btn-mist, body.player-view #mist-density, body.player-view #btn-lore-toggle, body.player-view #treasure-panel, body.player-view #tool-token {display:none!important}
@@ -509,11 +510,10 @@ body.player-view #mist-overlay {display:none!important}
             <div><h2 class="font-gothic text-corvo-gold font-bold"><i class="fa-solid fa-gem"></i> Tesouros & Descobertas</h2><p class="text-[11px] text-gray-400">Painel privado do mestre</p></div>
             <button onclick="toggleTreasurePanel(false)" class="text-gray-400 hover:text-white" aria-label="Fechar painel"><i class="fa-solid fa-xmark"></i></button>
         </div>
-        <div class="grid grid-cols-2 gap-2 mb-3">
-            <label class="text-xs text-gray-300">Personagem alvo<select id="treasure-player-select" class="mt-1 w-full bg-gothic-950 border border-gothic-600 rounded p-2 text-gray-100"></select></label>
+        <div class="grid grid-cols-1 gap-2 mb-3">
             <label class="text-xs text-gray-300">Local do mapa<select id="treasure-map-filter" onchange="renderTreasurePanel()" class="mt-1 w-full bg-gothic-950 border border-gothic-600 rounded p-2 text-gray-100"><option value="all">Todos os mapas</option><option value="overworld">Vale-Corvo</option><option value="dungeon">Cripta</option></select></label>
         </div>
-        <p class="text-[11px] text-amber-200 mb-2">Use “Revelar para jogador” quando passar em Percepção, Investigação ou encontrar uma pista. Cada personagem mantém sua própria descoberta.</p>
+        <p class="text-[11px] text-amber-200 mb-2">Em cada tesouro, escolha em “Para quem?” um jogador ou todos e clique em “Revelar”. Cada personagem mantém sua própria descoberta.</p>
         <div id="treasure-list"></div>
         <div class="border-t border-gothic-700 pt-3 mt-3 flex flex-wrap gap-2">
             <button onclick="addCustomTreasure()" class="px-3 py-2 rounded bg-amber-900 hover:bg-amber-800 border border-amber-600 text-xs text-amber-100"><i class="fa-solid fa-plus"></i> Criar tesouro no mapa</button>
@@ -761,7 +761,7 @@ body.player-view #mist-overlay {display:none!important}
         }
         function populatePlayerSelects(){
             const players=getPlayers();
-            ['active-player','treasure-player-select'].forEach(id=>{
+            ['active-player'].forEach(id=>{
                 const el=document.getElementById(id); if(!el) return;
                 const previous=el.value;
                 el.innerHTML=players.map(n=>`<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join('');
@@ -769,10 +769,14 @@ body.player-view #mist-overlay {display:none!important}
             });
         }
         function escapeHtml(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+        // Jogador real enxerga só o que foi revelado ao PRÓPRIO personagem; o menu "Jogador" é só uma prévia do mestre.
+        function currentViewer(){
+            if(window.firebaseRole==='player' && window.firebaseCharacterName) return window.firebaseCharacterName;
+            return document.getElementById('active-player')?.value || defaultPlayers[0];
+        }
         function isTreasureVisible(t){
             if(!playerViewMode) return true;
-            const player=document.getElementById('active-player')?.value || defaultPlayers[0];
-            return t.revealedTo.includes(player);
+            return t.revealedTo.includes(currentViewer());
         }
         function drawTreasureMarkers(){
             treasures.filter(t=>t.map===currentMapMode && isTreasureVisible(t)).forEach(t=>{
@@ -805,26 +809,51 @@ body.player-view #mist-overlay {display:none!important}
             panel.classList.toggle('hidden',!show);
             if(show){populatePlayerSelects();renderTreasurePanel();}
         }
+        // Para quem revelar/coletar/ocultar: escolhido em cada tesouro (um jogador ou todos).
+        let treasureTargets={};
+        function treasureTargetOptions(){
+            const heroes=tokens.filter(t=>t.type==='hero'&&t.name);
+            const label=n=>{const h=heroes.find(t=>t.name===n);return h&&h.displayName?`${n} — ${h.displayName}`:n;};
+            const connected=[...new Set(heroes.map(t=>t.name))];
+            const others=getPlayers().filter(n=>!connected.includes(n));
+            return [...connected.map(n=>({value:n,label:label(n)+' (conectado)'})),...others.map(n=>({value:n,label:n})),{value:'__all__',label:'Todos os jogadores'}];
+        }
+        function setTreasureTarget(id,v){treasureTargets[id]=v;}
+        // Atualiza as listas "Para quem?" quando um jogador entra/sai ou muda de nome, sem recolher os segredos abertos a cada movimento.
+        let treasureTargetSig='';
+        function refreshTreasureTargets(){
+            const sig=JSON.stringify(treasureTargetOptions());
+            if(sig===treasureTargetSig) return;
+            treasureTargetSig=sig;
+            const panel=document.getElementById('treasure-panel');
+            if(panel&&!panel.classList.contains('hidden')) renderTreasurePanel();
+        }
+        function treasureTargetsFor(id){
+            const opts=treasureTargetOptions();
+            const v=treasureTargets[id]&&opts.some(o=>o.value===treasureTargets[id])?treasureTargets[id]:opts[0].value;
+            return v==='__all__'?getPlayers():[v];
+        }
+        function treasureActionDone(msg,t){
+            document.getElementById('treasure-status').textContent=msg;
+            renderTreasurePanel();drawMap();window.ValeCorvoSync?.saveTreasures(treasures);
+        }
         function revealTreasure(id){
             const t=treasures.find(x=>x.id===id);if(!t)return;
-            const player=document.getElementById('treasure-player-select').value || defaultPlayers[0];
-            if(!t.revealedTo.includes(player))t.revealedTo.push(player);
-            document.getElementById('treasure-status').textContent=`“${t.name}” revelado para ${player}.`;
-            renderTreasurePanel();drawMap();window.ValeCorvoSync?.saveTreasures(treasures);
+            const who=treasureTargetsFor(id);
+            who.forEach(p=>{if(!t.revealedTo.includes(p))t.revealedTo.push(p);});
+            treasureActionDone(`“${t.name}” revelado para ${who.join(', ')}.`,t);
         }
         function collectTreasure(id){
             const t=treasures.find(x=>x.id===id);if(!t)return;
-            const player=document.getElementById('treasure-player-select').value || defaultPlayers[0];
-            if(!t.collectedBy.includes(player))t.collectedBy.push(player);
-            document.getElementById('treasure-status').textContent=`“${t.name}” marcado como coletado por ${player}.`;
-            renderTreasurePanel();drawMap();window.ValeCorvoSync?.saveTreasures(treasures);
+            const who=treasureTargetsFor(id);
+            who.forEach(p=>{if(!t.collectedBy.includes(p))t.collectedBy.push(p);});
+            treasureActionDone(`“${t.name}” marcado como coletado por ${who.join(', ')}.`,t);
         }
         function hideTreasure(id){
             const t=treasures.find(x=>x.id===id);if(!t)return;
-            const player=document.getElementById('treasure-player-select').value || defaultPlayers[0];
-            t.revealedTo=t.revealedTo.filter(n=>n!==player);
-            renderTreasurePanel();drawMap();
-            document.getElementById('treasure-status').textContent=`A descoberta de “${t.name}” foi ocultada para ${player}.`;window.ValeCorvoSync?.saveTreasures(treasures);
+            const who=treasureTargetsFor(id);
+            t.revealedTo=t.revealedTo.filter(n=>!who.includes(n));
+            treasureActionDone(`A descoberta de “${t.name}” foi ocultada para ${who.join(', ')}.`,t);
         }
         function renderGmSecrets(t){
             const n=gmNotes[t.id]; if(!n) return '';
@@ -858,13 +887,13 @@ body.player-view #mist-overlay {display:none!important}
         function renderTreasurePanel(){
             const list=document.getElementById('treasure-list');if(!list)return;
             const filter=document.getElementById('treasure-map-filter')?.value||'all';
-            const player=document.getElementById('treasure-player-select')?.value||defaultPlayers[0];
             const arr=treasures.filter(t=>filter==='all'||t.map===filter);
             list.innerHTML=arr.map(t=>`<div class="treasure-card">
-              <div class="flex items-start justify-between gap-2"><div><div class="text-sm font-bold text-amber-200">${escapeHtml(t.name)}</div><div class="text-[10px] uppercase tracking-wide text-gray-400">${t.map==='dungeon'?'Cripta':'Vale-Corvo'} · ${escapeHtml(t.kind)} · ${getColumnLetter(t.x)}${t.y+1}</div></div><span class="text-[10px] ${t.collectedBy.includes(player)?'text-slate-300':'text-emerald-300'}">${t.collectedBy.includes(player)?'Coletado':t.revealedTo.includes(player)?'Revelado':'Oculto'}</span></div>
+              <div class="flex items-start justify-between gap-2"><div><div class="text-sm font-bold text-amber-200">${escapeHtml(t.name)}</div><div class="text-[10px] uppercase tracking-wide text-gray-400">${t.map==='dungeon'?'Cripta':'Vale-Corvo'} · ${escapeHtml(t.kind)} · ${getColumnLetter(t.x)}${t.y+1}</div></div><span class="text-[10px] ${t.collectedBy.length?'text-slate-300':t.revealedTo.length?'text-emerald-300':'text-gray-500'}">${t.collectedBy.length?'Coletado':t.revealedTo.length?'Revelado':'Oculto'}</span></div>
               <p class="text-xs text-gray-300 mt-2"><b>Descrição:</b> ${escapeHtml(t.description)}</p><p class="text-xs text-gray-400 mt-1"><b>Pista:</b> ${escapeHtml(t.hint)} <span class="text-amber-200">(CD ${t.dc})</span></p>
               ${renderGmSecrets(t)}
-              <div class="flex flex-wrap gap-1.5 mt-2"><button onclick="revealTreasure(${t.id})" class="px-2 py-1 rounded bg-emerald-900 hover:bg-emerald-800 text-[10px] border border-emerald-700">Revelar para jogador</button><button onclick="hideTreasure(${t.id})" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] border border-slate-600">Ocultar</button><button onclick="collectTreasure(${t.id})" class="px-2 py-1 rounded bg-amber-900 hover:bg-amber-800 text-[10px] border border-amber-700">Marcar coletado</button></div>
+              <label class="block text-[11px] text-gray-300 mt-2">Para quem?<select onchange="setTreasureTarget(${t.id},this.value)" class="mt-1 w-full bg-gothic-950 border border-gothic-600 rounded p-1.5 text-xs text-gray-100">${treasureTargetOptions().map((o,i)=>`<option value="${escapeHtml(o.value)}" ${(treasureTargets[t.id]?treasureTargets[t.id]===o.value:i===0)?'selected':''}>${escapeHtml(o.label)}</option>`).join('')}</select></label>
+              <div class="flex flex-wrap gap-1.5 mt-2"><button onclick="revealTreasure(${t.id})" class="px-2 py-1 rounded bg-emerald-900 hover:bg-emerald-800 text-[10px] border border-emerald-700">Revelar</button><button onclick="hideTreasure(${t.id})" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] border border-slate-600">Ocultar</button><button onclick="collectTreasure(${t.id})" class="px-2 py-1 rounded bg-amber-900 hover:bg-amber-800 text-[10px] border border-amber-700">Marcar coletado</button></div>
               <p class="text-[10px] text-gray-500 mt-1">Revelado para: ${t.revealedTo.length?escapeHtml(t.revealedTo.join(', ')):'ninguém'}${t.collectedBy.length?' · Coletado por: '+escapeHtml(t.collectedBy.join(', ')):''}</p></div>`).join('');
         }
         function addCustomTreasure(){
@@ -1378,7 +1407,7 @@ body.player-view #mist-overlay {display:none!important}
             const mx = (e.clientX - rect.left - offsetX) / scale;
             const my = (e.clientY - rect.top - offsetY) / scale;
             const gx = Math.floor(mx / tileSize), gy = Math.floor(my / tileSize);
-            const player = document.getElementById('active-player')?.value || defaultPlayers[0];
+            const player = currentViewer();
             const t = treasures.find(item => item.map === currentMapMode && item.x === gx && item.y === gy && item.revealedTo.includes(player));
             if (t) {
                 alert(`${t.name}\n${t.kind}${t.collectedBy.includes(player) ? ' · Já coletado' : ''}\n\n${t.description}`);
@@ -1663,6 +1692,7 @@ body.player-view #mist-overlay {display:none!important}
                 tokens = tokens.filter(t => t.type !== 'hero' || activeIds.has(t.id));
                 docs.forEach(p => this.ensurePlayerToken(p));
                 populatePlayerSelects();
+                refreshTreasureTargets();
                 drawMap();
             },
             applyOwnPlayerDoc(p) {
