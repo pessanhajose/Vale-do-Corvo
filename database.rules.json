@@ -4,11 +4,11 @@
     ".write": false,
     "users": {
       "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'REPLACE_WITH_MASTER_UID')",
-        ".write": "auth != null && (auth.uid === 'REPLACE_WITH_MASTER_UID' || (auth.uid === $uid && newData.child('role').val() === 'player' && (!data.exists() || data.child('role').val() === 'player')))",
+        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')",
+        ".write": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || (auth.uid === $uid && newData.child('role').val() === 'player' && (!data.exists() || data.child('role').val() === 'player')))",
         ".validate": "newData.hasChildren(['role', 'displayName'])",
         "role": {
-          ".validate": "newData.isString() && (newData.val() === 'player' || (auth != null && auth.uid === 'REPLACE_WITH_MASTER_UID' && newData.val() === 'master'))"
+          ".validate": "newData.isString() && (newData.val() === 'player' || (auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' && newData.val() === 'master'))"
         },
         "displayName": { ".validate": "newData.isString() && newData.val().length <= 60" },
         "createdAt": { ".validate": "newData.isNumber() || newData.hasChildren(['.sv']) || !newData.exists()" },
@@ -17,8 +17,8 @@
     },
     "players": {
       "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'REPLACE_WITH_MASTER_UID')",
-        ".write": "auth != null && (auth.uid === 'REPLACE_WITH_MASTER_UID' || (auth.uid === $uid && newData.child('uid').val() === auth.uid && (!data.exists() || newData.child('characterName').val() === data.child('characterName').val())))",
+        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')",
+        ".write": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || (auth.uid === $uid && newData.child('uid').val() === auth.uid && (!data.exists() || newData.child('characterName').val() === data.child('characterName').val())))",
         ".validate": "newData.hasChildren(['uid', 'characterName', 'map', 'x', 'y']) && newData.child('uid').val() === $uid && newData.child('characterName').isString() && (newData.child('characterName').val() === 'Guerreiro' || newData.child('characterName').val() === 'Mago' || newData.child('characterName').val() === 'Ladino' || newData.child('characterName').val() === 'Clérigo') && (newData.child('map').val() === 'overworld' || newData.child('map').val() === 'dungeon') && newData.child('x').isNumber() && newData.child('x').val() >= 0 && newData.child('x').val() < 50 && newData.child('y').isNumber() && newData.child('y').val() >= 0 && newData.child('y').val() < 40",
         "uid": { ".validate": "newData.isString()" },
         "characterName": { ".validate": "newData.isString()" },
@@ -31,20 +31,20 @@
     },
     "sessions": {
       "$sessionId": {
-        ".read": "auth != null && auth.uid === 'REPLACE_WITH_MASTER_UID'",
-        ".write": "auth != null && auth.uid === 'REPLACE_WITH_MASTER_UID'"
+        ".read": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'",
+        ".write": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'"
       }
     },
     "exploration": {
       "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'REPLACE_WITH_MASTER_UID')",
-        ".write": "auth != null && (auth.uid === $uid || auth.uid === 'REPLACE_WITH_MASTER_UID')"
+        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')",
+        ".write": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')"
       }
     },
     "treasures": {
       "$treasureId": {
-        ".read": "auth != null && auth.uid === 'REPLACE_WITH_MASTER_UID'",
-        ".write": "auth != null && auth.uid === 'REPLACE_WITH_MASTER_UID'"
+        ".read": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'",
+        ".write": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'"
       }
     }
   }
