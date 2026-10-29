@@ -1564,7 +1564,14 @@ body.player-view #mist-overlay {display:none!important}
             },
             applyState(state) {
                 if (!state || typeof state !== 'object') return;
-                if (Array.isArray(state.tokens)) tokens = state.tokens.filter(t => t && t.type !== 'hero').map(t => ({...t})); // Heróis vêm exclusivamente de jogadores presentes, nunca da sessão salva.
+                if (Array.isArray(state.tokens)) {
+                    // A sessão compartilhada contém o mapa e os tokens do mestre, mas os heróis
+                    // são mantidos pelo listener de presença/documentos de jogadores. Substituí-los
+                    // aqui fazia os heróis sumirem a cada atualização de sessão.
+                    const currentHeroes = tokens.filter(t => t && t.type === 'hero').map(t => ({...t}));
+                    const sharedTokens = state.tokens.filter(t => t && t.type !== 'hero').map(t => ({...t}));
+                    tokens = [...sharedTokens, ...currentHeroes];
+                }
                 if (Array.isArray(state.dungeonFog) && state.dungeonFog.length === GRID_COLS) dungeonFog = state.dungeonFog.map(col => [...col]);
                 if (state.mapMode === 'overworld' || state.mapMode === 'dungeon') currentMapMode = state.mapMode;
                 if (state.cryptEntrance && Number.isInteger(state.cryptEntrance.x) && Number.isInteger(state.cryptEntrance.y)) cryptEntrance = {...state.cryptEntrance};
