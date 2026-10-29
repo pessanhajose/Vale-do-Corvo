@@ -190,19 +190,36 @@ async function saveExploration() {
     throw error;
   }
 }
+// Os tesouros públicos ficam em sessions/treasures: as regras do banco liberam leitura de sessions/*
+// para todos os logados, enquanto treasures/ só tem regra de leitura por id (listar a coleção é negado).
 async function saveTreasures(items) {
   if (role !== "master" || !activeUser || !Array.isArray(items)) return;
+  const map = {};
   for (const item of items) {
     if (item?.id === undefined || item?.id === null) continue;
     const id = String(item.id);
     const { id: ignoredId, ...data } = item;
-    await set(ref(db, `treasures/${id}`), {
-      ...data,
-      id,
-      updatedAt: serverTimestamp(),
-      updatedBy: activeUser.uid
-    });
+    map[id] = { ...data, id };
   }
+  // JSON remove campos undefined, que o Firebase recusaria.
+  const clean = JSON.parse(JSON.stringify(map));
+  await set(ref(db, "sessions/treasures"), { items: clean, updatedAt: serverTimestamp(), updatedBy: activeUser.uid });
+}
+
+// Migração única: se o novo nó estiver vazio, o mestre recupera os tesouros gravados no caminho antigo.
+let migratedTreasures = false;
+async function migrateOldTreasures() {
+  if (migratedTreasures || role !== "master" || !activeUser) return;
+  migratedTreasures = true;
+  const ids = [...Array(40).keys()].map(i => 101 + i).concat([...Array(40).keys()].map(i => 201 + i));
+  const found = [];
+  await Promise.all(ids.map(async id => {
+    try {
+      const snap = await get(ref(db, `treasures/${id}`));
+      if (snap.exists()) found.push({ ...snap.val(), id });
+    } catch (_) { /* sem permissão ou inexistente */ }
+  }));
+  if (found.length) await saveTreasures(found);
 }
 window.ValeCorvoSync = { queueSessionSave, saveTokenPosition, saveExploration, saveTreasures, saveGmNotes };
 
@@ -219,6 +236,7 @@ onAuthStateChanged(auth, async user => {
   displayNames = new Map();
   pendingNames = new Map();
   gmNotes = new Map();
+  migratedTreasures = false;
   if (!user) return;
 
   try {
@@ -293,11 +311,12 @@ onAuthStateChanged(auth, async user => {
 
   // No modo simplificado, tesouros sincronizados também são enviados a clientes autenticados.
   // Se quiser sigilo real depois, moveremos as descobertas para uma estrutura separada por jogador.
-  unsubscribers.push(onValue(ref(db, "treasures"), snap => {
-    const values = snap.val() || {};
+  unsubscribers.push(onValue(ref(db, "sessions/treasures"), snap => {
+    const values = snap.val()?.items || {};
     const items = Object.entries(values).map(([id, data]) => ({ ...data, id: data?.id ?? id }));
     window.ValeCorvoApp?.setTreasures?.(items);
     loadGmNotes(items);
+    if (!items.length) migrateOldTreasures();
   }, showSyncError));
 
 });
