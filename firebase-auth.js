@@ -7,8 +7,8 @@ import {
   updateProfile
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  doc, getDoc, setDoc, serverTimestamp
-} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+  ref, get, set, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
 const gate = document.getElementById("auth-gate");
 const form = document.getElementById("firebase-auth-form");
@@ -25,7 +25,13 @@ const logoutButton = document.getElementById("firebase-logout");
 const userBar = document.getElementById("firebase-user-bar");
 const userLabel = document.getElementById("firebase-user-label");
 let mode = "login";
-let currentUser = null;
+
+const initialPositions = {
+  "Guerreiro": { x: 21, y: 13 },
+  "Mago": { x: 20, y: 14 },
+  "Ladino": { x: 22, y: 14 },
+  "Clérigo": { x: 21, y: 15 }
+};
 
 function setMessage(text, isError = false) {
   message.textContent = text;
@@ -54,21 +60,18 @@ form.addEventListener("submit", async (event) => {
     let credential;
     if (mode === "register") {
       const displayName = nameInput.value.trim();
+      const characterName = characterSelect.value;
+      if (!Object.prototype.hasOwnProperty.call(initialPositions, characterName)) {
+        throw new Error("Selecione um personagem válido.");
+      }
       credential = await createUserWithEmailAndPassword(auth, email, password);
       if (displayName) await updateProfile(credential.user, { displayName });
-      await setDoc(doc(db, "users", credential.user.uid), {
+      await set(ref(db, `users/${credential.user.uid}`), {
         role: "player",
         displayName: displayName || email.split("@")[0],
         createdAt: serverTimestamp()
       });
-      const initialPositions = {
-        "Guerreiro": { x: 21, y: 13 },
-        "Mago": { x: 20, y: 14 },
-        "Ladino": { x: 22, y: 14 },
-        "Clérigo": { x: 21, y: 15 }
-      };
-      const characterName = characterSelect.value;
-      await setDoc(doc(db, "players", credential.user.uid), {
+      await set(ref(db, `players/${credential.user.uid}`), {
         uid: credential.user.uid,
         characterName,
         map: "overworld",
@@ -86,7 +89,8 @@ form.addEventListener("submit", async (event) => {
       "auth/weak-password": "A senha precisa ter pelo menos 6 caracteres.",
       "auth/invalid-credential": "E-mail ou senha incorretos.",
       "auth/network-request-failed": "Falha de rede. Confira sua conexão.",
-      "permission-denied": "O Firebase recusou o acesso. Confira as regras do Firestore."
+      "PERMISSION_DENIED": "O Firebase recusou o acesso. Confira as regras do Realtime Database.",
+      "permission_denied": "O Firebase recusou o acesso. Confira as regras do Realtime Database."
     };
     setMessage(messages[error.code] || `Não foi possível autenticar: ${error.message}`, true);
   } finally {
@@ -96,48 +100,39 @@ form.addEventListener("submit", async (event) => {
 });
 
 async function enterWithUser(user) {
-  currentUser = user;
-  let profileRef = doc(db, "users", user.uid);
-  let profileSnap = await getDoc(profileRef);
+  const profileRef = ref(db, `users/${user.uid}`);
+  let profileSnap = await get(profileRef);
   if (!profileSnap.exists()) {
-    // Contas antigas nunca ganham papel de mestre automaticamente.
-    await setDoc(profileRef, {
+    // Contas antigas recebem apenas o papel de jogador. Nunca promover automaticamente a mestre.
+    await set(profileRef, {
       role: "player",
       displayName: user.displayName || user.email?.split("@")[0] || "Jogador",
       createdAt: serverTimestamp()
     });
-    profileSnap = await getDoc(profileRef);
+    profileSnap = await get(profileRef);
   }
-  const role = profileSnap.data()?.role || "player";
-  if (role === "player") {
-    const playerRef = doc(db, "players", user.uid);
-    const playerSnap = await getDoc(playerRef);
-    if (!playerSnap.exists()) {
-      const validNames = ["Guerreiro", "Mago", "Ladino", "Clérigo"];
-      const displayName = user.displayName || "";
-      const characterName = validNames.includes(displayName) ? displayName : "Guerreiro";
-      const initialPositions = {
-        "Guerreiro": { x: 21, y: 13 },
-        "Mago": { x: 20, y: 14 },
-        "Ladino": { x: 22, y: 14 },
-        "Clérigo": { x: 21, y: 15 }
-      };
-      await setDoc(playerRef, {
-        uid: user.uid, characterName, map: "overworld",
-        ...initialPositions[characterName], updatedAt: serverTimestamp()
-      });
-    }
-  }
+  const profile = profileSnap.val() || {};
+  const role = profile.role === "master" ? "master" : "player";
   window.firebaseUser = user;
   window.firebaseRole = role;
+  window.firebaseCharacterName = null;
+
+  const playerSnap = await get(ref(db, `players/${user.uid}`));
+  if (playerSnap.exists()) {
+    window.firebaseCharacterName = playerSnap.val()?.characterName || null;
+  }
+
   userLabel.textContent = `${user.displayName || user.email} · ${role === "master" ? "Mestre" : "Jogador"}`;
   userBar.classList.remove("hidden");
   userBar.classList.add("flex");
   if (role === "master") {
     gate.classList.add("hidden");
     document.body.classList.remove("firebase-player-blocked");
+    document.getElementById("firebase-login-card").classList.remove("hidden");
+    document.getElementById("firebase-player-not-ready").classList.add("hidden");
     setMessage("");
   } else {
+    // Mantemos jogadores bloqueados enquanto a visão filtrada e a proteção da geometria não forem concluídas.
     gate.classList.remove("hidden");
     document.getElementById("firebase-login-card").classList.add("hidden");
     document.getElementById("firebase-player-not-ready").classList.remove("hidden");
@@ -148,9 +143,9 @@ logoutButton.addEventListener("click", async () => {
 });
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
-    currentUser = null;
     window.firebaseUser = null;
     window.firebaseRole = null;
+    window.firebaseCharacterName = null;
     userBar.classList.add("hidden");
     userBar.classList.remove("flex");
     document.getElementById("firebase-login-card").classList.remove("hidden");
