@@ -871,13 +871,8 @@ body.player-view #mist-overlay {display:none!important}
             // Draw Tokens
             tokens.forEach(token => {
                 if (token.map && token.map !== currentMapMode) return;
-                if (window.firebaseRole === 'player' && token.type === 'hero' && token.name !== window.firebaseCharacterName) {
-                    // Jogadores veem aliados próximos em tempo real, não o mapa inteiro.
-                    const sameMap = (token.map || 'overworld') === currentMapMode;
-                    const own = tokens.find(t => t.type === 'hero' && t.name === window.firebaseCharacterName);
-                    const radius = currentMapMode === 'dungeon' ? (magicVisionEnabled ? Math.min(16, visionRadius * 2) : visionRadius) : 6;
-                    if (!sameMap || !own || Math.hypot(token.x - own.x, token.y - own.y) > radius) return;
-                }
+                // Cada jogador vê somente o próprio token. O mestre vê todos os jogadores ativos.
+                if (window.firebaseRole === 'player' && token.type === 'hero' && token.name !== window.firebaseCharacterName) return;
                 // In dungeon mode, only draw tokens if cell is revealed or GM is viewing
                 const isRevealed = (currentMapMode === 'overworld') || (dungeonFog[token.x] && dungeonFog[token.x][token.y] === 1);
                 
@@ -1173,15 +1168,13 @@ body.player-view #mist-overlay {display:none!important}
 
         // Draw Fog of War Layer
         function drawDungeonFogOverlay() {
-            // O mestre sempre enxerga toda a cripta. A névoa de guerra é apenas uma camada de visão dos jogadores.
+            // A camada de névoa é exclusiva dos jogadores; o mestre sempre vê a planta completa.
             if (window.firebaseRole !== 'player') return;
             for (let x = 0; x < GRID_COLS; x++) {
                 for (let y = 0; y < GRID_ROWS; y++) {
-                    if (dungeonFog[x][y] === 0) {
-                        const px = x * tileSize;
-                        const py = y * tileSize;
+                    if (dungeonFog[x]?.[y] !== 1) {
                         ctx.fillStyle = 'rgba(5, 6, 8, 0.98)';
-                        ctx.fillRect(px, py, tileSize, tileSize);
+                        ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
                     }
                 }
             }
