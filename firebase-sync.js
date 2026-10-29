@@ -145,17 +145,24 @@ onAuthStateChanged(auth, async user => {
   }, showSyncError));
 
   if (role === "master") {
-    unsubscribers.push(onValue(ref(db, "presence"), presenceSnap => {
-      const active = presenceSnap.val() || {};
-      get(ref(db, "players")).then(playersSnap => {
-        const values = playersSnap.val() || {};
-        const activePlayers = Object.entries(values)
-          .filter(([uid]) => active[uid]?.active === true)
-          .map(([uid, data]) => ({ ...data, uid }));
-        playerDocs = new Map(activePlayers.map(p => [p.uid, p]));
-        window.ValeCorvoApp?.applyPlayerDocs?.(activePlayers);
-        queueSessionSave();
-      }).catch(showSyncError);
+    // Mantém os dois conjuntos em memória: a atualização de presença ou de personagem
+    // recalcula a lista, sem depender de um get() disparado apenas por um dos listeners.
+    let presenceValues = {};
+    let playersValues = {};
+    const refreshActivePlayers = () => {
+      const activePlayers = Object.entries(playersValues)
+        .filter(([uid, data]) => presenceValues[uid]?.active === true && data)
+        .map(([uid, data]) => ({ ...data, uid }));
+      playerDocs = new Map(activePlayers.map(p => [p.uid, p]));
+      window.ValeCorvoApp?.applyPlayerDocs?.(activePlayers);
+    };
+    unsubscribers.push(onValue(ref(db, "presence"), snap => {
+      presenceValues = snap.val() || {};
+      refreshActivePlayers();
+    }, showSyncError));
+    unsubscribers.push(onValue(ref(db, "players"), snap => {
+      playersValues = snap.val() || {};
+      refreshActivePlayers();
     }, showSyncError));
   } else {
     unsubscribers.push(onValue(ref(db, `players/${user.uid}`), snap => {
