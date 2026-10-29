@@ -1652,11 +1652,6 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
 
     <script type="module" src="./firebase-auth.js"></script>
     <script type="module" src="./firebase-sync.js"></script>
-    <script type="module">
-      import { auth } from "./firebase-config.js";
-      import { signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
-      document.getElementById("firebase-logout-master")?.addEventListener("click", () => signOut(auth));
-    </script>
 
 </body>
 </html>
