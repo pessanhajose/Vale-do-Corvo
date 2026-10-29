@@ -725,6 +725,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             if (label) label.textContent = `${visionRadius}q`;
             if (currentMapMode === 'dungeon') updateTorchVision();
             drawMap();
+            window.ValeCorvoSync?.saveExploration();
             window.ValeCorvoSync?.queueSessionSave();
         }
 
@@ -740,6 +741,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             }
             updateTorchVision();
             drawMap();
+            window.ValeCorvoSync?.saveExploration();
             window.ValeCorvoSync?.queueSessionSave();
         }
 
@@ -1342,6 +1344,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 if (moved) {
                     moved.map = currentMapMode;
                     window.ValeCorvoSync?.saveTokenPosition(moved);
+                    window.ValeCorvoSync?.saveExploration();
                 }
             }
             isDragging = false;
