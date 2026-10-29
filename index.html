@@ -406,17 +406,6 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                         <p class="text-xs text-gray-300 line-clamp-2">Picos rochosos e desfiladeiros perigosos infestados por bestas nebulosas.</p>
                     </div>
 
-                    <!-- POI 5 -->
-                    <div onclick="focusPoi(5)" class="bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 rounded-lg p-3 cursor-pointer transition group shadow">
-                        <div class="flex items-center justify-between mb-1">
-                            <h3 class="font-gothic font-bold text-corvo-gold text-sm group-hover:underline flex items-center gap-2">
-                                <i class="fa-solid fa-skull-crossbones text-emerald-500"></i> Altar de Sangue Oculto
-                            </h3>
-                            <span class="text-[10px] bg-emerald-950 text-emerald-200 px-2 py-0.5 rounded border border-emerald-800">Setor AF32</span>
-                        </div>
-                        <p class="text-xs text-gray-300 line-clamp-2">Santuário profano cercado por megálitos de pedra negra onde o pacto de Roderick é mantido.</p>
-                    </div>
-
                     <!-- POI 6 -->
                     <div onclick="focusPoi(6)" class="bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 rounded-lg p-3 cursor-pointer transition group shadow">
                         <div class="flex items-center justify-between mb-1">
@@ -1157,7 +1146,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             }
 
             // Dungeon Decorative Elements (Torches, Sarcophagi, Ritual Circles)
-            // Altar do Pacto no salão final da cripta (câmara superior), longe da entrada.
+            // Elemento decorativo do salão final da cripta, longe da entrada.
             const rcX = 28 * tileSize + tileSize / 2;
             const rcY = 4 * tileSize + tileSize / 2;
             ctx.beginPath();
@@ -1245,6 +1234,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 const maxY = Math.max(minY, room.y2 - 1);
                 hero.x = minX + Math.floor(Math.random() * (maxX - minX + 1));
                 hero.y = minY + Math.floor(Math.random() * (maxY - minY + 1));
+                hero.map = 'dungeon';
             });
             // Reinicia a névoa e revela apenas o entorno de cada herói.
             initDungeonFog(0);
@@ -1335,6 +1325,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                             tokens.filter(t => t.type === 'hero').forEach((t, i) => {
                                 t.x = Math.min(GRID_COLS - 1, cryptEntrance.x + (i % 2));
                                 t.y = Math.min(GRID_ROWS - 1, cryptEntrance.y + Math.floor(i / 2));
+                                t.map = 'overworld';
                             });
                             switchMapMode('overworld');
                         }
