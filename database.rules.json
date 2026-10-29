@@ -2,13 +2,19 @@
   "rules": {
     ".read": false,
     ".write": false,
+    "masters": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
     "users": {
       "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')",
-        ".write": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || (auth.uid === $uid && newData.child('role').val() === 'player' && (!data.exists() || data.child('role').val() === 'player')))",
+        ".read": "auth != null && (auth.uid === $uid || (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true))",
+        ".write": "auth != null && ((auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true) || (auth.uid === $uid && newData.child('role').val() === 'player' && (!data.exists() || data.child('role').val() === 'player')))",
         ".validate": "newData.hasChildren(['role','displayName'])",
         "role": {
-          ".validate": "newData.isString() && (newData.val() === 'player' || (auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' && newData.val() === 'master'))"
+          ".validate": "newData.isString() && (newData.val() === 'player' || (auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true) && newData.val() === 'master'))"
         },
         "displayName": {
           ".validate": "newData.isString() && newData.val().length <= 60"
@@ -22,10 +28,10 @@
       }
     },
     "players": {
-      ".read": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'",
+      ".read": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)",
       "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')",
-        ".write": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || (auth.uid === $uid && newData.child('uid').val() === auth.uid && (!data.exists() || newData.child('characterName').val() === data.child('characterName').val())))",
+        ".read": "auth != null && (auth.uid === $uid || (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true))",
+        ".write": "auth != null && ((auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true) || (auth.uid === $uid && newData.child('uid').val() === auth.uid && (!data.exists() || newData.child('characterName').val() === data.child('characterName').val())))",
         ".validate": "newData.hasChildren(['uid','characterName','map','x','y']) && newData.child('uid').val() === $uid && (newData.child('characterName').val() === 'Guerreiro' || newData.child('characterName').val() === 'Mago' || newData.child('characterName').val() === 'Ladino' || newData.child('characterName').val() === 'Clérigo') && (newData.child('map').val() === 'overworld' || newData.child('map').val() === 'dungeon') && newData.child('x').isNumber() && newData.child('x').val() >= 0 && newData.child('x').val() < 50 && newData.child('y').isNumber() && newData.child('y').val() >= 0 && newData.child('y').val() < 40",
         "uid": {
           ".validate": "newData.isString()"
@@ -53,37 +59,37 @@
     "sessions": {
       "$sessionId": {
         ".read": "auth != null",
-        ".write": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'"
+        ".write": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)"
       }
     },
     "exploration": {
       "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')",
-        ".write": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')"
+        ".read": "auth != null && (auth.uid === $uid || (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true))",
+        ".write": "auth != null && (auth.uid === $uid || (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true))"
       }
     },
     "visibleTokens": {
       "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')",
-        ".write": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'"
+        ".read": "auth != null && (auth.uid === $uid || (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true))",
+        ".write": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)"
       }
     },
     "discoveries": {
       "$uid": {
-        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')",
-        ".write": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'"
+        ".read": "auth != null && (auth.uid === $uid || (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true))",
+        ".write": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)"
       }
     },
     "treasures": {
       "$treasureId": {
         ".read": "auth != null",
-        ".write": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'"
+        ".write": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)"
       }
     },
     "gmNotes": {
       "$noteId": {
-        ".read": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'",
-        ".write": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'"
+        ".read": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)",
+        ".write": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)"
       }
     }
   }
