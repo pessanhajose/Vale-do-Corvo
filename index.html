@@ -102,6 +102,7 @@
 .treasure-marker{font: bold 12px Inter,sans-serif;text-align:center;}
 body.player-view #token-tray, body.player-view #sidebar, body.player-view #dungeon-quick-controls, body.player-view #fow-tools, body.player-view #btn-move-crypt, body.player-view #btn-grid, body.player-view #btn-mist, body.player-view #mist-density, body.player-view #btn-lore-toggle, body.player-view #treasure-panel, body.player-view #tool-token {display:none!important}
 body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {display:none!important}
+body.player-view #mist-overlay {display:none!important}
 @media(max-width:800px){#treasure-panel{left:3vw!important;right:3vw!important;width:auto!important;max-width:none!important} #player-view-controls{max-width:48vw;}}
 </style>
 
@@ -627,12 +628,8 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         ];
 
         // Tokens
-        let tokens = [
-            { id: 1, type: 'hero', name: 'Guerreiro', color: '#3b82f6', x: 21, y: 13, icon: 'fa-shield-halved', map: 'overworld' },
-            { id: 2, type: 'hero', name: 'Mago', color: '#8b5cf6', x: 20, y: 14, icon: 'fa-hat-wizard', map: 'overworld' },
-            { id: 3, type: 'hero', name: 'Ladino', color: '#10b981', x: 22, y: 14, icon: 'fa-mask', map: 'overworld' },
-            { id: 4, type: 'hero', name: 'Clérigo', color: '#eab308', x: 21, y: 15, icon: 'fa-ankh', map: 'overworld' }
-        ];
+        // Tokens de heróis só são criados quando jogadores reais entram; nada aparece pré-ativado para o mestre.
+        let tokens = [];
 
         let draggedTokenId = null;
 
@@ -874,7 +871,13 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             // Draw Tokens
             tokens.forEach(token => {
                 if (token.map && token.map !== currentMapMode) return;
-                if (window.firebaseRole === 'player' && token.type === 'hero' && token.name !== window.firebaseCharacterName) return;
+                if (window.firebaseRole === 'player' && token.type === 'hero' && token.name !== window.firebaseCharacterName) {
+                    // Jogadores veem aliados próximos em tempo real, não o mapa inteiro.
+                    const sameMap = (token.map || 'overworld') === currentMapMode;
+                    const own = tokens.find(t => t.type === 'hero' && t.name === window.firebaseCharacterName);
+                    const radius = currentMapMode === 'dungeon' ? (magicVisionEnabled ? Math.min(16, visionRadius * 2) : visionRadius) : 6;
+                    if (!sameMap || !own || Math.hypot(token.x - own.x, token.y - own.y) > radius) return;
+                }
                 // In dungeon mode, only draw tokens if cell is revealed or GM is viewing
                 const isRevealed = (currentMapMode === 'overworld') || (dungeonFog[token.x] && dungeonFog[token.x][token.y] === 1);
                 
@@ -1170,6 +1173,8 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
 
         // Draw Fog of War Layer
         function drawDungeonFogOverlay() {
+            // O mestre sempre enxerga toda a cripta. A névoa de guerra é apenas uma camada de visão dos jogadores.
+            if (window.firebaseRole !== 'player') return;
             for (let x = 0; x < GRID_COLS; x++) {
                 for (let y = 0; y < GRID_ROWS; y++) {
                     if (dungeonFog[x][y] === 0) {
@@ -1578,27 +1583,32 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 if (radiusLabel) radiusLabel.textContent = `${visionRadius}q`;
                 drawMap();
             },
+            ensurePlayerToken(p) {
+                if (!p || typeof p.characterName !== 'string') return null;
+                const colors = { 'Guerreiro': '#3b82f6', 'Mago': '#8b5cf6', 'Ladino': '#10b981', 'Clérigo': '#eab308' };
+                let token = tokens.find(t => t.type === 'hero' && t.name === p.characterName);
+                if (!token) {
+                    token = { id: 'player-' + String(p.uid || p.characterName), type: 'hero', name: p.characterName,
+                        color: colors[p.characterName] || '#94a3b8', x: 21, y: 13, icon: 'fa-user', map: 'overworld' };
+                    tokens.push(token);
+                }
+                if (Number.isInteger(p.x) && Number.isInteger(p.y)) {
+                    token.x = Math.max(0, Math.min(GRID_COLS - 1, p.x));
+                    token.y = Math.max(0, Math.min(GRID_ROWS - 1, p.y));
+                }
+                token.map = p.map === 'dungeon' ? 'dungeon' : 'overworld';
+                return token;
+            },
             applyPlayerDocs(docs) {
-                docs.forEach(p => {
-                    if (!p || typeof p.characterName !== 'string') return;
-                    const token = tokens.find(t => t.type === 'hero' && t.name === p.characterName);
-                    if (token && Number.isInteger(p.x) && Number.isInteger(p.y)) {
-                        token.x = Math.max(0, Math.min(GRID_COLS - 1, p.x));
-                        token.y = Math.max(0, Math.min(GRID_ROWS - 1, p.y));
-                        token.map = p.map === 'dungeon' ? 'dungeon' : 'overworld';
-                    }
-                });
+                docs.forEach(p => this.ensurePlayerToken(p));
+                populatePlayerSelects();
                 drawMap();
             },
             applyOwnPlayerDoc(p) {
                 if (!p || typeof p.characterName !== 'string') return;
                 window.firebaseCharacterName = p.characterName;
-                const token = tokens.find(t => t.type === 'hero' && t.name === p.characterName);
-                if (token && Number.isInteger(p.x) && Number.isInteger(p.y)) {
-                    token.x = Math.max(0, Math.min(GRID_COLS - 1, p.x));
-                    token.y = Math.max(0, Math.min(GRID_ROWS - 1, p.y));
-                    token.map = p.map === 'dungeon' ? 'dungeon' : 'overworld';
-                }
+                this.ensurePlayerToken(p);
+                populatePlayerSelects();
                 drawMap();
             },
             setTreasures(items) {
