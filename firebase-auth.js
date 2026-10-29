@@ -133,10 +133,14 @@ async function enterWithUser(user) {
     document.getElementById("firebase-player-not-ready").classList.add("hidden");
     setMessage("");
   } else {
-    // Mantemos jogadores bloqueados enquanto a visão filtrada e a proteção da geometria não forem concluídas.
-    gate.classList.remove("hidden");
+    // Modo simples de campanha compartilhada: jogadores autenticados recebem o mapa/sessão do mestre.
+    gate.classList.add("hidden");
     document.getElementById("firebase-login-card").classList.add("hidden");
-    document.getElementById("firebase-player-not-ready").classList.remove("hidden");
+    document.getElementById("firebase-player-not-ready").classList.add("hidden");
+    document.body.classList.add("firebase-player");
+    const viewButton = document.getElementById("btn-view-mode");
+    if (viewButton && !document.body.classList.contains("player-view")) viewButton.click();
+    setMessage("");
   }
 }
 async function handleLogout() {
@@ -153,6 +157,10 @@ onAuthStateChanged(auth, async (user) => {
     window.firebaseUser = null;
     window.firebaseRole = null;
     window.firebaseCharacterName = null;
+    document.body.classList.remove("firebase-player");
+    if (document.body.classList.contains("player-view")) {
+      document.getElementById("btn-view-mode")?.click();
+    }
     userBar.classList.add("hidden");
     userBar.classList.remove("flex");
     document.getElementById("firebase-login-card").classList.remove("hidden");
