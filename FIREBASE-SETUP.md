@@ -1,39 +1,51 @@
 # Vale do Corvo — Firebase Realtime Database
 
-A autenticação usa Firebase Authentication (e-mail/senha) e os dados do jogo usam o **Realtime Database** em `https://vale-do-corvo-default-rtdb.firebaseio.com`. Esta integração ainda está em preparação: mantenha o acesso de jogadores bloqueado até testar as regras e remover do JavaScript público a geometria e quaisquer segredos da campanha.
+A autenticação usa Firebase Authentication (e-mail/senha) e os dados usam o **Realtime Database** em `https://vale-do-corvo-default-rtdb.firebaseio.com`.
+
+**Status: integração ainda NÃO pronta para liberar jogadores.** O login do mestre e a sincronização inicial do estado do mestre estão implementados, mas a visão filtrada por personagem e a proteção da geometria do mapa ainda não estão concluídas. Não publique regras novas nem faça merge até resolver os bloqueios abaixo.
 
 ## O que a branch contém
 
 - Configuração do Firebase Web SDK apontada ao Realtime Database.
 - Cadastro e login por e-mail/senha.
 - Perfis em `users/{uid}` e personagens em `players/{uid}`.
-- Sincronização inicial do estado do mestre em `sessions/main`.
-- Persistência de exploração em `exploration/{uid}` e tesouros em `treasures/{id}`.
-- Regras de Realtime Database em `database.rules.json`. O arquivo antigo `firestore.rules` não protege o Realtime Database.
+- Sincronização do estado do mestre em `sessions/main`.
+- Persistência inicial de exploração em `exploration/{uid}` e tesouros em `treasures/{id}`.
+- Regras de Realtime Database em `database.rules.json`. Regras do Cloud Firestore não protegem esse banco.
 
-## Antes de publicar ou testar com dados reais
+## Bloqueios antes de publicar ou testar com jogadores
 
-1. No Firebase Console, abra **Realtime Database → Rules**.
-2. Abra `database.rules.json` nesta branch e substitua todas as ocorrências de `REPLACE_WITH_MASTER_UID` pelo UID da conta do mestre. Não use e-mail nem senha nesse campo.
-3. Revise as regras e publique-as em **Realtime Database → Rules**. Enquanto o UID não for substituído, as operações de mestre serão negadas; não troque por regras abertas.
-4. Em **Authentication → Users**, confirme que a conta do mestre existe. Em **Realtime Database → Data**, crie/ajuste `users/{UID_DO_MESTRE}` com `role: "master"`, `displayName` e, se desejar, `createdAt`.
-5. Teste com duas contas: mestre e jogador. Confirme que o jogador não consegue ler `sessions` nem `treasures`, e que só consegue ler/escrever seu próprio perfil/personagem e exploração.
-6. Não libere jogadores ainda. A geometria da cripta e outras informações do mapa continuam no código público do site; regras de banco não escondem dados já publicados no HTML/JavaScript.
-7. O histórico do Git pode conter versões antigas de dados secretos. Considere pistas/segredos já publicados comprometidos e não reutilize senhas ou chaves privadas que tenham sido expostas.
+1. **Não publique ainda o arquivo de regras**: a revisão do código encontrou partes da experiência do jogador que ainda não consomem os caminhos `visibleTokens/{uid}` e `discoveries/{uid}`.
+2. O jogador ainda é mantido na tela de bloqueio em `firebase-auth.js`. Isso é intencional até que a visão filtrada esteja concluída.
+3. A sincronização atual não calcula nem publica automaticamente, por personagem, os tokens visíveis; o mestre lê a lista de jogadores, mas o fluxo de visão individual ainda não está completo.
+4. A névoa salva em `exploration/{uid}` precisa ser validada como exploração individual persistente e não deve permitir que o estado global de um personagem seja usado como fonte para outros.
+5. A geometria do mapa e a lógica de renderização continuam em `index.html`, que é público no GitHub Pages. Regras do banco não escondem dados já entregues ao navegador. Se a geometria precisa ser secreta, ela não pode permanecer no JavaScript público; será necessário mover os dados secretos para um backend protegido ou redesenhar o modelo para não depender de segredo no cliente.
+6. Ainda é necessário testar com duas contas reais e confirmar permissões de leitura/escrita. O simulador de regras sozinho não valida o fluxo completo do site.
 
-## Limitações conhecidas
+## Preparação da conta do mestre
 
-- A sincronização inicial precisa ser testada no navegador com as regras reais.
-- A visão filtrada por personagem, a publicação de tokens visíveis e a proteção da geometria do mapa não estão completas.
-- Não há migração automática dos dados antigos do Firestore/HTML para o Realtime Database.
-- O GitHub Pages hospeda apenas arquivos estáticos; não pode guardar segredos administrativos. Nunca coloque uma chave de conta de serviço no repositório.
+O UID do mestre está definido nas regras desta branch. O perfil `users/{UID_DO_MESTRE}` precisa existir com `role: "master"`. A promoção inicial deve ser feita com cuidado no banco depois que as regras corretas forem aprovadas; não crie regras abertas temporárias para fazer isso.
 
-## Estrutura esperada no Realtime Database
+Não coloque senhas, chaves privadas ou credenciais administrativas no repositório. A configuração Web do Firebase é pública por natureza; a proteção depende das regras e da arquitetura.
+
+## Estrutura usada
 
 ```text
 users/{uid}
 players/{uid}
 sessions/main
 exploration/{uid}
+visibleTokens/{uid}
+discoveries/{uid}
 treasures/{treasureId}
+gmNotes/{noteId}
 ```
+
+## Critérios para considerar pronta
+
+- O mestre consegue carregar/salvar sessão e administrar personagens.
+- Cada jogador só pode alterar seu próprio personagem e vê apenas os tokens que o mestre autorizou para ele.
+- A exploração é individual, persiste entre sessões e não revela áreas de outros personagens.
+- Tesouros/notas secretos só são lidos pela conta do mestre; o jogador recebe apenas descobertas explicitamente liberadas.
+- Regras são testadas com o simulador e com duas contas reais.
+- Não há segredos da campanha que precisem ser privados embutidos em HTML/JavaScript público.
