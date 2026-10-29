@@ -1,91 +1,80 @@
-# Vale do Corvo — Firebase Realtime Database
+# Vale do Corvo — Firebase: modo compartilhado simples
 
-## Status de segurança
+## O que foi preparado nesta branch
 
-**Os jogadores continuam bloqueados intencionalmente. Não faça merge desta branch nem publique regras novas como se a visão individual estivesse pronta.** O login do mestre e a sincronização inicial existem, mas ainda falta concluir e testar o fluxo completo de visão individual.
+Esta versão usa uma configuração simples para uma campanha em que os jogadores são confiáveis e podem ver o mapa e os dados enviados ao navegador:
 
-A configuração Web do Firebase (incluindo o `apiKey`) é pública por natureza. A segurança depende das regras do Realtime Database e de não entregar dados secretos ao navegador.
+- O mestre continua sendo o único que pode gravar a sessão completa em `sessions/main`.
+- Todas as contas autenticadas podem ler a sessão para receber o mapa atualizado.
+- O jogador entra na página e o site tenta colocá-lo automaticamente no modo de jogador.
+- Cada jogador lê e atualiza o próprio documento em `players/{uid}`.
+- O mestre continua sendo o único que pode gravar tesouros.
+- Tesouros passam a poder ser lidos por usuários autenticados. Isso é intencional nesta versão simples; não use dados que precisem continuar secretos dentro de `treasures`.
+- `gmNotes` continua restrito à conta do mestre.
+- A planta e a lógica do mapa ficam no código público do GitHub Pages. Como você disse que confia nos jogadores, esta versão prioriza simplicidade, não sigilo da geometria.
 
-## O que já existe nesta branch
+**Importante:** as alterações estão na branch `firebase-integracao`. Não foram publicadas no Firebase Console e não foram mescladas à branch principal. O login/sincronização precisam ser testados com suas contas reais antes de usar com a campanha.
 
-- Login e cadastro com Firebase Authentication (e-mail/senha).
-- Perfis em `users/{uid}` e personagens em `players/{uid}`.
-- Estado da sessão do mestre em `sessions/main`.
-- Persistência inicial em `exploration/{uid}` e `treasures/{id}`.
-- Arquivo de regras proposto em `database.rules.json` — **rascunho para revisão, não uma configuração aprovada para produção**.
+## Passo a passo no Firebase Console
 
-## Por que ainda não podemos liberar jogadores
+### 1. Faça backup
 
-1. A interface do jogador ainda é bloqueada por `firebase-auth.js`, de propósito.
-2. O cliente ainda desenha a geometria do mapa e a planta da cripta a partir de código em `index.html`. Qualquer visitante pode baixar esse JavaScript. Uma névoa desenhada no canvas ou botões escondidos com CSS não protegem a geometria.
-3. `visibleTokens/{uid}` e `discoveries/{uid}` estão previstos nas regras, mas o fluxo da aplicação ainda não os usa integralmente.
-4. A névoa de guerra precisa ser aplicada e persistida por personagem; não se deve reutilizar a névoa global do mestre como se fosse a exploração privada de cada jogador.
-5. O cliente não pode ler `sessions/main`, tesouros secretos ou notas do mestre. Ele deve receber apenas os dados que pode ver.
-6. As regras precisam ser testadas com duas contas reais e tentativas diretas de leitura e escrita, não apenas pela aparência da interface.
+1. Abra https://console.firebase.google.com/.
+2. Selecione o projeto `vale-do-corvo`.
+3. Abra **Realtime Database → Dados** e exporte/guarde uma cópia JSON dos dados atuais.
+4. Abra **Realtime Database → Regras** e copie as regras atuais para um arquivo local. Assim você pode restaurá-las se necessário.
 
-## Próxima arquitetura necessária
+### 2. Confira a conta do mestre
 
-- **Mestre:** lê e altera a sessão completa, tokens, tesouros e notas.
-- **Jogador:** lê o próprio perfil/personagem e documentos filtrados explicitamente publicados para seu UID.
-- **Exploração:** um registro por UID, sem usar a exploração de outro jogador como fonte.
-- **Descobertas:** dados publicados pelo mestre para um UID específico; o jogador não pode publicar descobertas para si próprio.
-- **Mapa:** decidir quais partes da geometria são públicas. Se a planta completa da cripta for segredo, ela não pode ficar no JavaScript estático do GitHub Pages; será necessário um backend autenticado que só entregue a informação permitida. Regras do banco não escondem código que já foi entregue pelo site.
-- **Regras:** negar por padrão, conceder somente os caminhos necessários e validar formato/valores das gravações.
+1. Abra **Authentication → Users**.
+2. Encontre a conta do mestre e copie o UID.
+3. O arquivo `database.rules.json` desta branch identifica o mestre pelo UID `cPr3vPhG5XPS6ifk5NixuAjNui82`.
+4. Se o UID no Console for diferente, não publique as regras antes de corrigir o arquivo.
 
-## Passo a passo seguro no Firebase Console
+### 3. Confirme o perfil do mestre no banco
 
-### 1. Faça um backup antes de mudar qualquer coisa
+Em **Realtime Database → Dados**, confirme que existe:
 
-1. Abra o [Firebase Console](https://console.firebase.google.com/).
-2. Selecione o projeto **vale-do-corvo**.
-3. Entre em **Realtime Database** e confirme que a URL é `https://vale-do-corvo-default-rtdb.firebaseio.com`.
-4. Na aba **Dados**, use a opção de exportar JSON, se disponível na interface, e guarde o arquivo localmente.
-5. Na aba **Regras**, copie as regras atualmente publicadas e guarde-as separadamente. Não as substitua ainda.
+```json
+users/cPr3vPhG5XPS6ifk5NixuAjNui82
+{
+  "role": "master",
+  "displayName": "Mestre"
+}
+```
 
-### 2. Confira a autenticação
+Não substitua os outros campos do perfil sem necessidade. Se o registro não existir, primeiro faça backup e depois crie esse nó com o UID correto e o papel `master`.
 
-1. No menu lateral, abra **Authentication** → **Sign-in method**.
-2. Confirme que **E-mail/senha** está habilitado.
-3. Em **Users**, confira se as contas esperadas existem.
-4. Não compartilhe senhas nem publique dados de autenticação no GitHub.
+### 4. Publique as regras propostas
 
-### 3. Confira os UIDs
+1. Abra **Realtime Database → Regras**.
+2. Abra o arquivo [database.rules.json desta branch](https://github.com/pessanhajose/Vale-do-Corvo/blob/firebase-integracao/database.rules.json).
+3. Copie o JSON inteiro para o editor de regras do Realtime Database.
+4. Confirme que o UID do mestre corresponde ao UID visto em Authentication.
+5. Clique em **Publicar**.
 
-1. Em **Authentication** → **Users**, abra a conta do mestre e copie o UID.
-2. Confirme que ele corresponde ao UID configurado no código e no rascunho de regras desta branch.
-3. Faça o mesmo para a conta de teste de jogador.
-4. Se os UIDs forem diferentes, **não publique as regras sem corrigir e revisar o arquivo primeiro**.
+Essas regras permitem leitura da sessão e dos tesouros para qualquer usuário autenticado, mas só a conta mestre pode gravar a sessão e os tesouros. Os jogadores podem ler/escrever o próprio documento de personagem, sujeito às validações das regras.
 
-### 4. Não abra o banco temporariamente
+Se o editor indicar erro, **não tente contornar usando `.read: true` ou `.write: true`**. Restaure as regras copiadas no backup e me envie a mensagem de erro.
 
-Não use `.read: true` ou `.write: true` para fazer o site funcionar. Isso pode expor a sessão, os personagens e os segredos. As regras publicadas no Realtime Database são aplicadas no servidor e não são substituídas por esconder elementos da interface.
+### 5. Teste antes de liberar o link
 
-### 5. Teste as regras antes de publicar
+1. Abra o site da branch `firebase-integracao` ou execute localmente com Live Server.
+2. Entre como mestre em uma janela normal.
+3. Entre como jogador em uma janela anônima ou em outro navegador.
+4. Como mestre, mova um personagem ou altere a névoa e confira se a tela do jogador atualiza.
+5. Como jogador, mova seu personagem e confira se o mestre recebe a posição.
+6. Atualize as duas páginas e confirme que o estado persiste.
+7. Teste sair e entrar novamente.
 
-Quando o arquivo de regras tiver sido revisado para corresponder ao fluxo final:
+Se algo falhar, não faça merge para a branch principal ainda. Anote a mensagem exibida na página e no Console do navegador (F12).
 
-1. Abra **Realtime Database** → **Regras**.
-2. Use o **simulador de regras**, quando disponível, para testar leituras e gravações autenticadas e não autenticadas.
-3. Confirme que o jogador não consegue ler `sessions/main`, `treasures`, `gmNotes` nem o perfil de outro jogador.
-4. Confirme que o jogador só consegue escrever nos próprios campos autorizados e não consegue alterar seu papel para `master`.
-5. Só publique depois de todos os testes passarem e de a aplicação estar usando os caminhos protegidos corretamente.
+## Limitações assumidas nesta versão simples
 
-**Importante:** neste momento, não publique o arquivo `database.rules.json` desta branch como solução final. O código de visão individual ainda não está completo, e a regra precisa ser validada contra os dados reais e as operações usadas pela aplicação.
+- O jogador pode inspecionar o código público e os dados que o navegador recebe; você disse que isso é aceitável para seu grupo.
+- A névoa da cripta é compartilhada, não uma exploração individual por personagem.
+- Os dados de tesouros são enviados a todos os usuários autenticados, mesmo quando a interface não os mostra.
+- O modo de jogador esconde ferramentas da interface, mas não é uma barreira de segurança contra alguém que tente manipular o navegador.
+- Não há garantia de que o fluxo esteja correto até que você faça os testes acima com duas contas reais.
 
-## Teste local antes do GitHub Pages
-
-1. Abra a branch `firebase-integracao` no VS Code.
-2. Execute o site localmente com uma extensão como Live Server.
-3. Use uma janela normal para o mestre e uma janela anônima ou outro navegador para o jogador.
-4. Teste login, logout, salvamento, atualização da página e acesso negado aos caminhos privados.
-5. Não remova o bloqueio do jogador até que a visão filtrada e as regras estejam prontas.
-
-## Critérios para considerar pronta
-
-- O mestre carrega e salva a sessão completa.
-- Cada jogador recebe somente os tokens e descobertas autorizados para seu UID.
-- A exploração é individual e persiste entre sessões.
-- Tesouros secretos e notas do mestre não são lidos pelo jogador.
-- Tentativas diretas de ler ou alterar dados de outros usuários são negadas pelas regras.
-- A geometria que precisa ser secreta não é enviada ao cliente público.
-- O fluxo foi testado com duas contas reais antes do merge.
+Se futuramente quiser que cada jogador veja somente descobertas individuais, precisaremos trocar a sincronização compartilhada por dados separados por UID.
