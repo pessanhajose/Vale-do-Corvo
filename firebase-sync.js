@@ -118,31 +118,28 @@ onAuthStateChanged(auth, async user => {
     return;
   }
 
-  if (role === "master") {
-    unsubscribers.push(onValue(ref(db, "sessions/main"), snap => {
-      if (snap.exists()) {
-        const remote = { ...snap.val() };
-        if (Array.isArray(remote.dungeonFog) && remote.dungeonFog.length === 50 * 40 && !Array.isArray(remote.dungeonFog[0])) {
-          remote.dungeonFog = Array.from({ length: 50 }, (_, x) => remote.dungeonFog.slice(x * 40, (x + 1) * 40));
-        }
-        applyingRemoteState = true;
-        try { window.ValeCorvoApp?.applyState?.(remote); }
-        finally { applyingRemoteState = false; }
-      } else {
-        queueSessionSave();
+  // A sessão do mestre é compartilhada com todas as contas autenticadas.
+  // Este modo prioriza simplicidade e confiança entre jogadores: a geometria e os dados enviados ao navegador são públicos.
+  unsubscribers.push(onValue(ref(db, "sessions/main"), snap => {
+    if (snap.exists()) {
+      const remote = { ...snap.val() };
+      if (Array.isArray(remote.dungeonFog) && remote.dungeonFog.length === 50 * 40 && !Array.isArray(remote.dungeonFog[0])) {
+        remote.dungeonFog = Array.from({ length: 50 }, (_, x) => remote.dungeonFog.slice(x * 40, (x + 1) * 40));
       }
-    }, showSyncError));
+      applyingRemoteState = true;
+      try { window.ValeCorvoApp?.applyState?.(remote); }
+      finally { applyingRemoteState = false; }
+    } else if (role === "master") {
+      queueSessionSave();
+    }
+  }, showSyncError));
 
+  if (role === "master") {
     unsubscribers.push(onValue(ref(db, "players"), snap => {
       const values = snap.val() || {};
       playerDocs = new Map(Object.entries(values));
       window.ValeCorvoApp?.applyPlayerDocs?.(Object.values(values));
-    }, showSyncError));
-
-    unsubscribers.push(onValue(ref(db, "treasures"), snap => {
-      const values = snap.val() || {};
-      const items = Object.entries(values).map(([id, data]) => ({ ...data, id: data?.id ?? id }));
-      window.ValeCorvoApp?.setTreasures?.(items);
+      queueSessionSave();
     }, showSyncError));
   } else {
     unsubscribers.push(onValue(ref(db, `players/${user.uid}`), snap => {
@@ -154,20 +151,12 @@ onAuthStateChanged(auth, async user => {
     }, showSyncError));
   }
 
-  unsubscribers.push(onValue(ref(db, `exploration/${user.uid}`), snap => {
-    const data = snap.val();
-    if (Array.isArray(data?.dungeonFog)) {
-      let grid = data.dungeonFog;
-      if (grid.length === 50 * 40 && !Array.isArray(grid[0])) {
-        grid = Array.from({ length: 50 }, (_, x) => data.dungeonFog.slice(x * 40, (x + 1) * 40));
-      }
-      if (Array.isArray(grid[0])) {
-        applyingRemoteState = true;
-        try {
-          const current = window.ValeCorvoApp?.getState?.();
-          if (current) window.ValeCorvoApp.applyState({ ...current, dungeonFog: grid });
-        } finally { applyingRemoteState = false; }
-      }
-    }
+  // No modo simplificado, tesouros sincronizados também são enviados a clientes autenticados.
+  // Se quiser sigilo real depois, moveremos as descobertas para uma estrutura separada por jogador.
+  unsubscribers.push(onValue(ref(db, "treasures"), snap => {
+    const values = snap.val() || {};
+    const items = Object.entries(values).map(([id, data]) => ({ ...data, id: data?.id ?? id }));
+    window.ValeCorvoApp?.setTreasures?.(items);
   }, showSyncError));
+
 });
