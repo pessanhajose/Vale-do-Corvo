@@ -103,7 +103,12 @@ async function saveTreasures(items) {
 window.ValeCorvoSync = { queueSessionSave, saveTokenPosition, saveExploration, saveTreasures };
 
 onAuthStateChanged(auth, async user => {
+  const previousUser = activeUser;
   stopListeners();
+  if (previousUser && (!user || previousUser.uid !== user.uid)) {
+    // Logout também encerra a presença; onDisconnect sozinho não cobre logout explícito.
+    set(ref(db, `presence/${previousUser.uid}`), null).catch(() => {});
+  }
   activeUser = user;
   role = null;
   playerDocs = new Map();
