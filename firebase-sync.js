@@ -46,7 +46,12 @@ async function saveSessionNow() {
   if (role !== "master" || !activeUser || applyingRemoteState) return;
   const state = stateForRealtimeDatabase();
   if (!state) return;
-  await set(ref(db, "sessions/main"), state);
+  try {
+    await set(ref(db, "sessions/main"), state);
+  } catch (error) {
+    showSyncError(error);
+    throw error;
+  }
 }
 function queueSessionSave() {
   if (role !== "master" || !activeUser || applyingRemoteState) return;
@@ -63,28 +68,41 @@ async function saveTokenPosition(token) {
     y: Math.max(0, Math.min(39, token.y)),
     updatedAt: serverTimestamp()
   };
-  if (role === "player") {
-    await set(ref(db, `players/${activeUser.uid}`), clean);
-  } else if (role === "master" && token.type === "hero") {
-    const matching = [...playerDocs.entries()].find(([, data]) => data.characterName === token.name);
-    if (matching) {
-      await set(ref(db, `players/${matching[0]}`), { ...clean, uid: matching[0] });
+  try {
+    if (role === "player") {
+      await set(ref(db, `players/${activeUser.uid}`), clean);
+    } else if (role === "master" && token.type === "hero") {
+      const tokenUid = String(token.id || "").startsWith("player-") ? String(token.id).slice(7) : null;
+      const matching = tokenUid && playerDocs.has(tokenUid)
+        ? [tokenUid, playerDocs.get(tokenUid)]
+        : [...playerDocs.entries()].find(([, data]) => data.characterName === token.name);
+      if (matching) {
+        await set(ref(db, `players/${matching[0]}`), { ...clean, uid: matching[0] });
+      }
+      await saveSessionNow();
+    } else if (role === "master") {
+      await saveSessionNow();
     }
-    await saveSessionNow();
-  } else if (role === "master") {
-    await saveSessionNow();
+  } catch (error) {
+    showSyncError(error);
+    throw error;
   }
 }
 async function saveExploration() {
   if (!activeUser) return;
   const state = window.ValeCorvoApp?.getState?.();
   if (!state?.dungeonFog) return;
-  await set(ref(db, `exploration/${activeUser.uid}`), {
-    uid: activeUser.uid,
-    dungeonFog: state.dungeonFog.flat(),
-    mapMode: state.mapMode,
-    updatedAt: serverTimestamp()
-  });
+  try {
+    await set(ref(db, `exploration/${activeUser.uid}`), {
+      uid: activeUser.uid,
+      dungeonFog: state.dungeonFog.flat(),
+      mapMode: state.mapMode,
+      updatedAt: serverTimestamp()
+    });
+  } catch (error) {
+    showSyncError(error);
+    throw error;
+  }
 }
 async function saveTreasures(items) {
   if (role !== "master" || !activeUser || !Array.isArray(items)) return;
