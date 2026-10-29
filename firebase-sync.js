@@ -28,6 +28,19 @@ function showSyncError(error) {
     message.className = "text-sm text-red-300 mt-3";
   }
 }
+async function announcePresence() {
+  if (!activeUser) return;
+  const presenceRef = ref(db, `presence/${activeUser.uid}`);
+  try {
+    await onDisconnect(presenceRef).remove();
+    await set(presenceRef, { active: true, uid: activeUser.uid, updatedAt: serverTimestamp() });
+  } catch (error) {
+    showSyncError(error);
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") announcePresence();
+});
 function stateForRealtimeDatabase() {
   const state = window.ValeCorvoApp?.getState?.();
   if (!state) return null;
@@ -79,6 +92,7 @@ async function saveTokenPosition(token) {
       if (matching) {
         await set(ref(db, `players/${matching[0]}`), { ...clean, uid: matching[0] });
       }
+      await saveOtherHeroes(token);
       await saveSessionNow();
     } else if (role === "master") {
       await saveSessionNow();
@@ -86,6 +100,26 @@ async function saveTokenPosition(token) {
   } catch (error) {
     showSyncError(error);
     throw error;
+  }
+}
+// Ao entrar/sair da cripta o mestre reposiciona TODOS os heróis localmente. Se só o token arrastado
+// fosse gravado, o próximo snapshot de players/* devolveria os outros ao mapa/posição antigos
+// e eles sumiriam da tela até um F5.
+async function saveOtherHeroes(skipToken) {
+  const state = window.ValeCorvoApp?.getState?.();
+  if (!state) return;
+  for (const hero of state.tokens) {
+    if (hero.type !== "hero" || hero.id === skipToken.id) continue;
+    const uid = String(hero.id || "").startsWith("player-") ? String(hero.id).slice(7) : null;
+    const doc = uid && playerDocs.get(uid);
+    if (!doc || !Number.isInteger(hero.x) || !Number.isInteger(hero.y)) continue;
+    const map = hero.map === "dungeon" ? "dungeon" : "overworld";
+    if (doc.x === hero.x && doc.y === hero.y && doc.map === map) continue;
+    await set(ref(db, `players/${uid}`), {
+      uid, characterName: doc.characterName, map,
+      x: Math.max(0, Math.min(49, hero.x)), y: Math.max(0, Math.min(39, hero.y)),
+      updatedAt: serverTimestamp()
+    });
   }
 }
 async function saveExploration() {
@@ -142,9 +176,12 @@ onAuthStateChanged(auth, async user => {
   }
 
   // Presença: jogadores só contam como ativos enquanto a conexão estiver viva.
-  const presenceRef = ref(db, `presence/${user.uid}`);
-  await onDisconnect(presenceRef).remove();
-  await set(presenceRef, { active: true, uid: user.uid, updatedAt: serverTimestamp() });
+  // O onDisconnect é consumido pelo servidor quando a conexão cai (aba em segundo plano, celular
+  // bloqueado, rede instável). Por isso a presença é refeita a cada reconexão, não só no login;
+  // do contrário o mestre deixava de ver o token até o jogador recarregar a página (F5).
+  unsubscribers.push(onValue(ref(db, ".info/connected"), snap => {
+    if (snap.val() === true) announcePresence();
+  }, showSyncError));
 
   // A sessão do mestre é compartilhada com todas as contas autenticadas.
   // Este modo prioriza simplicidade e confiança entre jogadores: a geometria e os dados enviados ao navegador são públicos.

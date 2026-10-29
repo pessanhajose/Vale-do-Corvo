@@ -1595,6 +1595,8 @@ body.player-view #mist-overlay {display:none!important}
                     tokens.push(token);
                 }
                 token.name = p.characterName;
+                // Um snapshot remoto chegando no meio do arrasto não pode puxar o token de volta.
+                if (draggedTokenId === token.id) return token;
                 if (Number.isInteger(p.x) && Number.isInteger(p.y)) {
                     token.x = Math.max(0, Math.min(GRID_COLS - 1, p.x));
                     token.y = Math.max(0, Math.min(GRID_ROWS - 1, p.y));
