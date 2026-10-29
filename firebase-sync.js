@@ -1,10 +1,9 @@
 import { auth, db } from "./firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc
-} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+  ref, get, set, onValue, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
-const stateRef = doc(db, "sessions", "main");
 let activeUser = null;
 let role = null;
 let saveTimer = null;
@@ -15,18 +14,21 @@ let unsubscribers = [];
 function stopListeners() {
   unsubscribers.forEach(unsub => { try { unsub(); } catch {} });
   unsubscribers = [];
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = null;
 }
 function showSyncError(error) {
   console.error("[Vale-do-Corvo/Firebase]", error);
   const message = document.getElementById("firebase-auth-message");
-  if (message && error?.code) {
-    message.textContent = "Firebase: " + (error.code === "permission-denied"
-      ? "acesso negado pelas regras do Firestore."
-      : error.message || error.code);
+  if (message) {
+    const denied = error?.code === "PERMISSION_DENIED" || error?.code === "permission_denied";
+    message.textContent = "Firebase: " + (denied
+      ? "acesso negado pelas regras do Realtime Database."
+      : error?.message || error?.code || "erro de sincronização.");
     message.className = "text-sm text-red-300 mt-3";
   }
 }
-function stateForFirestore() {
+function stateForRealtimeDatabase() {
   const state = window.ValeCorvoApp?.getState?.();
   if (!state) return null;
   return {
@@ -42,13 +44,13 @@ function stateForFirestore() {
 }
 async function saveSessionNow() {
   if (role !== "master" || !activeUser || applyingRemoteState) return;
-  const state = stateForFirestore();
+  const state = stateForRealtimeDatabase();
   if (!state) return;
-  await setDoc(stateRef, state, { merge: true });
+  await set(ref(db, "sessions/main"), state);
 }
 function queueSessionSave() {
   if (role !== "master" || !activeUser || applyingRemoteState) return;
-  clearTimeout(saveTimer);
+  if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => saveSessionNow().catch(showSyncError), 500);
 }
 async function saveTokenPosition(token) {
@@ -62,14 +64,11 @@ async function saveTokenPosition(token) {
     updatedAt: serverTimestamp()
   };
   if (role === "player") {
-    const playerRef = doc(db, "players", activeUser.uid);
-    await setDoc(playerRef, clean, { merge: true });
+    await set(ref(db, `players/${activeUser.uid}`), clean);
   } else if (role === "master" && token.type === "hero") {
     const matching = [...playerDocs.entries()].find(([, data]) => data.characterName === token.name);
     if (matching) {
-      await setDoc(doc(db, "players", matching[0]), {
-        ...clean, uid: matching[0]
-      }, { merge: true });
+      await set(ref(db, `players/${matching[0]}`), { ...clean, uid: matching[0] });
     }
     await saveSessionNow();
   } else if (role === "master") {
@@ -80,12 +79,12 @@ async function saveExploration() {
   if (!activeUser) return;
   const state = window.ValeCorvoApp?.getState?.();
   if (!state?.dungeonFog) return;
-  await setDoc(doc(db, "exploration", activeUser.uid), {
+  await set(ref(db, `exploration/${activeUser.uid}`), {
     uid: activeUser.uid,
     dungeonFog: state.dungeonFog.flat(),
     mapMode: state.mapMode,
     updatedAt: serverTimestamp()
-  }, { merge: true });
+  });
 }
 async function saveTreasures(items) {
   if (role !== "master" || !activeUser || !Array.isArray(items)) return;
@@ -93,12 +92,12 @@ async function saveTreasures(items) {
     if (item?.id === undefined || item?.id === null) continue;
     const id = String(item.id);
     const { id: ignoredId, ...data } = item;
-    await setDoc(doc(db, "treasures", id), {
+    await set(ref(db, `treasures/${id}`), {
       ...data,
       id,
       updatedAt: serverTimestamp(),
       updatedBy: activeUser.uid
-    }, { merge: true });
+    });
   }
 }
 window.ValeCorvoSync = { queueSessionSave, saveTokenPosition, saveExploration, saveTreasures };
@@ -109,20 +108,20 @@ onAuthStateChanged(auth, async user => {
   role = null;
   playerDocs = new Map();
   if (!user) return;
+
   try {
-    const profile = await getDoc(doc(db, "users", user.uid));
-    role = profile.exists() ? profile.data()?.role : null;
+    const profileSnap = await get(ref(db, `users/${user.uid}`));
+    role = profileSnap.exists() && profileSnap.val()?.role === "master" ? "master" : "player";
     window.firebaseRole = role;
   } catch (error) {
     showSyncError(error);
     return;
   }
-  if (!role) return;
 
   if (role === "master") {
-    unsubscribers.push(onSnapshot(stateRef, snap => {
+    unsubscribers.push(onValue(ref(db, "sessions/main"), snap => {
       if (snap.exists()) {
-        const remote = { ...snap.data() };
+        const remote = { ...snap.val() };
         if (Array.isArray(remote.dungeonFog) && remote.dungeonFog.length === 50 * 40 && !Array.isArray(remote.dungeonFog[0])) {
           remote.dungeonFog = Array.from({ length: 50 }, (_, x) => remote.dungeonFog.slice(x * 40, (x + 1) * 40));
         }
@@ -134,28 +133,33 @@ onAuthStateChanged(auth, async user => {
       }
     }, showSyncError));
 
-    unsubscribers.push(onSnapshot(collection(db, "players"), snap => {
-      playerDocs = new Map(snap.docs.map(d => [d.id, d.data()]));
-      window.ValeCorvoApp?.applyPlayerDocs?.(snap.docs.map(d => d.data()));
+    unsubscribers.push(onValue(ref(db, "players"), snap => {
+      const values = snap.val() || {};
+      playerDocs = new Map(Object.entries(values));
+      window.ValeCorvoApp?.applyPlayerDocs?.(Object.values(values));
     }, showSyncError));
 
-    unsubscribers.push(onSnapshot(collection(db, "treasures"), snap => {
-      const items = snap.docs.map(d => ({ ...d.data(), id: d.data().id ?? d.id }));
+    unsubscribers.push(onValue(ref(db, "treasures"), snap => {
+      const values = snap.val() || {};
+      const items = Object.entries(values).map(([id, data]) => ({ ...data, id: data?.id ?? id }));
       window.ValeCorvoApp?.setTreasures?.(items);
     }, showSyncError));
   } else {
-    const playerRef = doc(db, "players", user.uid);
-    unsubscribers.push(onSnapshot(playerRef, snap => {
-      if (snap.exists()) window.ValeCorvoApp?.applyOwnPlayerDoc?.(snap.data());
+    unsubscribers.push(onValue(ref(db, `players/${user.uid}`), snap => {
+      if (snap.exists()) {
+        const player = snap.val();
+        window.firebaseCharacterName = player.characterName || null;
+        window.ValeCorvoApp?.applyOwnPlayerDoc?.(player);
+      }
     }, showSyncError));
   }
 
-  unsubscribers.push(onSnapshot(doc(db, "exploration", user.uid), snap => {
-    const data = snap.data();
+  unsubscribers.push(onValue(ref(db, `exploration/${user.uid}`), snap => {
+    const data = snap.val();
     if (Array.isArray(data?.dungeonFog)) {
       let grid = data.dungeonFog;
       if (grid.length === 50 * 40 && !Array.isArray(grid[0])) {
-        grid = Array.from({ length: 50 }, (_, x) => grid.slice(x * 40, (x + 1) * 40));
+        grid = Array.from({ length: 50 }, (_, x) => data.dungeonFog.slice(x * 40, (x + 1) * 40));
       }
       if (Array.isArray(grid[0])) {
         applyingRemoteState = true;
