@@ -154,7 +154,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         </section>
         <section id="firebase-player-not-ready" class="hidden w-full max-w-md rounded-2xl border border-amber-700 bg-gothic-900 p-6 shadow-2xl">
             <h2 class="font-gothic text-xl text-amber-200 font-bold">Conta de jogador criada</h2>
-            <p class="text-sm text-gray-300 mt-3">O acesso ao mapa dos jogadores ainda está bloqueado nesta etapa. Precisamos primeiro mover as notas do mestre e os segredos para dados protegidos do Firestore. Isso evita que informações secretas fiquem disponíveis no código público do site.</p>
+            <p class="text-sm text-gray-300 mt-3">O acesso ao mapa dos jogadores ainda está bloqueado nesta etapa. Precisamos primeiro mover as notas do mestre e os segredos para dados protegidos do Realtime Database. Isso evita que informações secretas fiquem disponíveis no código público do site.</p>
             <button id="firebase-logout" type="button" class="mt-5 rounded-lg border border-gothic-600 bg-gothic-800 px-4 py-2 text-sm hover:bg-gothic-700">Sair da conta</button>
         </section>
     </div>
@@ -514,11 +514,11 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                     </div>
                 </div>
 
-                <!-- Notas secretas não ficam no HTML público. São carregadas apenas de documentos protegidos do Firestore. -->
+                <!-- Notas secretas não ficam no HTML público. São carregadas apenas de documentos protegidos do Realtime Database. -->
                 <div id="tab-gm" class="space-y-4 hidden">
                     <div class="bg-gothic-800 border border-gothic-700 rounded-lg p-4 space-y-2">
                         <h3 class="font-gothic font-bold text-corvo-gold text-sm">Área privada do mestre</h3>
-                        <p class="text-xs text-gray-300">As notas de campanha devem ser cadastradas no Firestore, na coleção protegida do mestre. Este arquivo público não contém mais as notas secretas antigas.</p>
+                        <p class="text-xs text-gray-300">As notas de campanha devem ser cadastradas no Realtime Database, na coleção protegida do mestre. Este arquivo público não contém mais as notas secretas antigas.</p>
                         <div class="flex items-center gap-2 pt-2">
                             <button onclick="rollDice(20)" class="px-3 py-1.5 bg-gothic-700 hover:bg-gothic-600 rounded text-xs font-bold text-corvo-gold border border-gothic-500">D20</button>
                             <button onclick="rollDice(6)" class="px-3 py-1.5 bg-gothic-700 hover:bg-gothic-600 rounded text-xs font-bold text-corvo-gold border border-gothic-500">1d6</button>
@@ -784,7 +784,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         const defaultPlayers = ['Guerreiro', 'Mago', 'Ladino', 'Clérigo'];
         let playerViewMode = false;
         let treasureIdCounter = 100;
-        let treasures = []; // Conteúdo secreto carregado exclusivamente do Firestore.
+        let treasures = []; // Conteúdo secreto carregado exclusivamente do Realtime Database.
         function getPlayers(){
             const fromTokens=tokens.filter(t=>t.type==='hero').map(t=>t.name).filter(Boolean);
             return [...new Set([...defaultPlayers,...fromTokens])];
