@@ -10,6 +10,9 @@ let saveTimer = null;
 let applyingRemoteState = false;
 let playerDocs = new Map();
 let unsubscribers = [];
+let displayNames = new Map(); // uid -> nome de exibição escolhido no login
+let pendingNames = new Map();
+let gmNotes = new Map();      // id do tesouro -> segredos (somente o mestre lê/escreve)
 
 function stopListeners() {
   unsubscribers.forEach(unsub => { try { unsub(); } catch {} });
@@ -27,6 +30,54 @@ function showSyncError(error) {
       : error?.message || error?.code || "erro de sincronização.");
     message.className = "text-sm text-red-300 mt-3";
   }
+}
+const clip = (v, n = 1500) => String(v ?? "").slice(0, n);
+function loadDisplayName(uid) {
+  if (displayNames.has(uid)) return Promise.resolve(displayNames.get(uid));
+  if (pendingNames.has(uid)) return pendingNames.get(uid);
+  const job = get(ref(db, `users/${uid}`))
+    .then(snap => {
+      const name = snap.exists() ? clip(snap.val()?.displayName, 60).trim() : "";
+      displayNames.set(uid, name);
+      return name;
+    })
+    .catch(() => "")
+    .finally(() => pendingNames.delete(uid));
+  pendingNames.set(uid, job);
+  return job;
+}
+function publishGmNotes() {
+  window.ValeCorvoApp?.setGmNotes?.(Object.fromEntries([...gmNotes].filter(([, v]) => v)));
+}
+// Segredos (respostas e consequências) ficam em gmNotes/<id>: as regras do banco só liberam
+// leitura e escrita para o mestre, então jogadores não conseguem ler nem pelo console.
+async function loadGmNotes(items) {
+  if (role !== "master" || !activeUser) return;
+  const missing = items.map(i => String(i.id)).filter(id => !gmNotes.has(id));
+  if (!missing.length) return;
+  await Promise.all(missing.map(async id => {
+    try {
+      const snap = await get(ref(db, `gmNotes/${id}`));
+      gmNotes.set(id, snap.exists() ? snap.val() : null);
+    } catch (error) { showSyncError(error); }
+  }));
+  publishGmNotes();
+}
+async function saveGmNotes(notes) {
+  if (role !== "master" || !activeUser || !notes || typeof notes !== "object") return;
+  for (const [id, n] of Object.entries(notes)) {
+    const clean = {
+      treasureId: String(id),
+      answer: clip(n?.answer), success: clip(n?.success), failure: clip(n?.failure),
+      reward: clip(n?.reward), notes: clip(n?.notes),
+      updatedAt: serverTimestamp(), updatedBy: activeUser.uid
+    };
+    try {
+      await set(ref(db, `gmNotes/${id}`), clean);
+      gmNotes.set(String(id), { ...clean, updatedAt: Date.now() });
+    } catch (error) { showSyncError(error); throw error; }
+  }
+  publishGmNotes();
 }
 async function announcePresence() {
   if (!activeUser) return;
@@ -152,7 +203,7 @@ async function saveTreasures(items) {
     });
   }
 }
-window.ValeCorvoSync = { queueSessionSave, saveTokenPosition, saveExploration, saveTreasures };
+window.ValeCorvoSync = { queueSessionSave, saveTokenPosition, saveExploration, saveTreasures, saveGmNotes };
 
 onAuthStateChanged(auth, async user => {
   const previousUser = activeUser;
@@ -164,6 +215,9 @@ onAuthStateChanged(auth, async user => {
   activeUser = user;
   role = null;
   playerDocs = new Map();
+  displayNames = new Map();
+  pendingNames = new Map();
+  gmNotes = new Map();
   if (!user) return;
 
   try {
@@ -207,9 +261,13 @@ onAuthStateChanged(auth, async user => {
     const refreshActivePlayers = () => {
       const activePlayers = Object.entries(playersValues)
         .filter(([uid, data]) => presenceValues[uid]?.active === true && data)
-        .map(([uid, data]) => ({ ...data, uid }));
+        .map(([uid, data]) => ({ ...data, uid, displayName: displayNames.get(uid) || "" }));
       playerDocs = new Map(activePlayers.map(p => [p.uid, p]));
       window.ValeCorvoApp?.applyPlayerDocs?.(activePlayers);
+      // Busca o nome de exibição dos jogadores novos e redesenha quando chegar.
+      activePlayers.filter(p => !displayNames.has(p.uid)).forEach(p => {
+        loadDisplayName(p.uid).then(name => { if (name) refreshActivePlayers(); });
+      });
     };
     unsubscribers.push(onValue(ref(db, "presence"), snap => {
       presenceValues = snap.val() || {};
@@ -224,7 +282,10 @@ onAuthStateChanged(auth, async user => {
       if (snap.exists()) {
         const player = snap.val();
         window.firebaseCharacterName = player.characterName || null;
-        window.ValeCorvoApp?.applyOwnPlayerDoc?.(player);
+        const applyOwn = () => window.ValeCorvoApp?.applyOwnPlayerDoc?.(
+          { ...player, displayName: displayNames.get(user.uid) || user.displayName || "" });
+        applyOwn();
+        if (!displayNames.has(user.uid)) loadDisplayName(user.uid).then(name => { if (name) applyOwn(); });
       }
     }, showSyncError));
   }
@@ -235,6 +296,7 @@ onAuthStateChanged(auth, async user => {
     const values = snap.val() || {};
     const items = Object.entries(values).map(([id, data]) => ({ ...data, id: data?.id ?? id }));
     window.ValeCorvoApp?.setTreasures?.(items);
+    loadGmNotes(items);
   }, showSyncError));
 
 });

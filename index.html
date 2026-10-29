@@ -518,6 +518,8 @@ body.player-view #mist-overlay {display:none!important}
         <div class="border-t border-gothic-700 pt-3 mt-3 flex flex-wrap gap-2">
             <button onclick="addCustomTreasure()" class="px-3 py-2 rounded bg-amber-900 hover:bg-amber-800 border border-amber-600 text-xs text-amber-100"><i class="fa-solid fa-plus"></i> Criar tesouro no mapa</button>
             <button onclick="resetTreasureReveals()" class="px-3 py-2 rounded bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 text-xs">Resetar revelações</button>
+            <button onclick="document.getElementById('treasure-import').click()" class="px-3 py-2 rounded bg-gothic-800 hover:bg-gothic-700 border border-red-800 text-xs text-red-200"><i class="fa-solid fa-file-import"></i> Importar tesouros e enigmas (.json)</button>
+            <input type="file" id="treasure-import" accept="application/json,.json" class="hidden" onchange="importTreasuresFile(this)">
         </div>
         <p id="treasure-status" class="text-[11px] text-emerald-300 mt-2" role="status"></p>
     </div>
@@ -751,6 +753,7 @@ body.player-view #mist-overlay {display:none!important}
         const defaultPlayers = ['Guerreiro', 'Mago', 'Ladino', 'Clérigo'];
         let playerViewMode = false;
         let treasureIdCounter = 100;
+        let gmNotes = {}; // Segredos do mestre (respostas e consequências), carregados só para o mestre.
         let treasures = []; // Conteúdo secreto carregado exclusivamente do Realtime Database.
         function getPlayers(){
             const fromTokens=tokens.filter(t=>t.type==='hero').map(t=>t.name).filter(Boolean);
@@ -823,6 +826,35 @@ body.player-view #mist-overlay {display:none!important}
             renderTreasurePanel();drawMap();
             document.getElementById('treasure-status').textContent=`A descoberta de “${t.name}” foi ocultada para ${player}.`;window.ValeCorvoSync?.saveTreasures(treasures);
         }
+        function renderGmSecrets(t){
+            const n=gmNotes[t.id]; if(!n) return '';
+            const row=(label,v)=>v?`<p class="mt-1"><b class="text-red-200">${label}:</b> ${escapeHtml(v)}</p>`:'';
+            return `<details class="mt-2 text-xs text-gray-300 border border-red-900/60 rounded p-2 bg-black/30"><summary class="cursor-pointer text-red-300 font-bold">🔒 Segredos do mestre</summary>${row('Resposta / solução',n.answer)}${row('Se acertar',n.success)}${row('Se errar',n.failure)}${row('Recompensa',n.reward)}${row('Notas',n.notes)}</details>`;
+        }
+        function importTreasuresFile(input){
+            const file=input.files&&input.files[0]; if(!file) return;
+            const status=document.getElementById('treasure-status');
+            file.text().then(txt=>{
+                const data=JSON.parse(txt);
+                if(!data||!Array.isArray(data.treasures)) throw new Error('arquivo sem a lista "treasures"');
+                const clamp=(v,max)=>Math.max(0,Math.min(max,Math.floor(Number(v))||0));
+                let added=0;
+                data.treasures.forEach(raw=>{
+                    const id=Number(raw&&raw.id); if(!Number.isInteger(id)||treasures.some(t=>t.id===id)) return;
+                    treasures.push({id,name:String(raw.name||'Tesouro').slice(0,80),map:raw.map==='dungeon'?'dungeon':'overworld',
+                        x:clamp(raw.x,GRID_COLS-1),y:clamp(raw.y,GRID_ROWS-1),kind:String(raw.kind||'Enigma').slice(0,30),
+                        description:String(raw.description||'').slice(0,1200),hint:String(raw.hint||'').slice(0,600),
+                        dc:Number(raw.dc)||12,hidden:true,revealedTo:[],collectedBy:[]});
+                    added++;
+                });
+                treasureIdCounter=Math.max(treasureIdCounter,...treasures.map(t=>Number(t.id)||0));
+                const notes=data.gmNotes&&typeof data.gmNotes==='object'?data.gmNotes:{};
+                renderTreasurePanel();drawMap();
+                return Promise.all([window.ValeCorvoSync?.saveTreasures(treasures),window.ValeCorvoSync?.saveGmNotes(notes)])
+                    .then(()=>{status.className='text-[11px] text-emerald-300 mt-2';status.textContent=`${added} tesouro(s) importado(s); respostas e consequências salvas só para o mestre.`;});
+            }).catch(err=>{status.textContent='Falha ao importar: '+(err&&err.message||err);status.className='text-[11px] text-red-300 mt-2';})
+              .finally(()=>{input.value='';});
+        }
         function renderTreasurePanel(){
             const list=document.getElementById('treasure-list');if(!list)return;
             const filter=document.getElementById('treasure-map-filter')?.value||'all';
@@ -831,6 +863,7 @@ body.player-view #mist-overlay {display:none!important}
             list.innerHTML=arr.map(t=>`<div class="treasure-card">
               <div class="flex items-start justify-between gap-2"><div><div class="text-sm font-bold text-amber-200">${escapeHtml(t.name)}</div><div class="text-[10px] uppercase tracking-wide text-gray-400">${t.map==='dungeon'?'Cripta':'Vale-Corvo'} · ${escapeHtml(t.kind)} · ${getColumnLetter(t.x)}${t.y+1}</div></div><span class="text-[10px] ${t.collectedBy.includes(player)?'text-slate-300':'text-emerald-300'}">${t.collectedBy.includes(player)?'Coletado':t.revealedTo.includes(player)?'Revelado':'Oculto'}</span></div>
               <p class="text-xs text-gray-300 mt-2"><b>Descrição:</b> ${escapeHtml(t.description)}</p><p class="text-xs text-gray-400 mt-1"><b>Pista:</b> ${escapeHtml(t.hint)} <span class="text-amber-200">(CD ${t.dc})</span></p>
+              ${renderGmSecrets(t)}
               <div class="flex flex-wrap gap-1.5 mt-2"><button onclick="revealTreasure(${t.id})" class="px-2 py-1 rounded bg-emerald-900 hover:bg-emerald-800 text-[10px] border border-emerald-700">Revelar para jogador</button><button onclick="hideTreasure(${t.id})" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] border border-slate-600">Ocultar</button><button onclick="collectTreasure(${t.id})" class="px-2 py-1 rounded bg-amber-900 hover:bg-amber-800 text-[10px] border border-amber-700">Marcar coletado</button></div>
               <p class="text-[10px] text-gray-500 mt-1">Revelado para: ${t.revealedTo.length?escapeHtml(t.revealedTo.join(', ')):'ninguém'}${t.collectedBy.length?' · Coletado por: '+escapeHtml(t.collectedBy.join(', ')):''}</p></div>`).join('');
         }
@@ -909,6 +942,25 @@ body.player-view #mist-overlay {display:none!important}
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.fillText(token.name.substring(0, 3).toUpperCase(), tx, ty);
+
+                // Nome de exibição escolhido pelo jogador, acima do token, para identificar quem é quem.
+                if (token.type === 'hero' && token.displayName) {
+                    const label = token.displayName.length > 16 ? token.displayName.slice(0, 15) + '…' : token.displayName;
+                    ctx.font = `bold ${Math.max(10, tileSize * 0.3)}px Inter, sans-serif`;
+                    const lw = ctx.measureText(label).width + 10, lh = Math.max(14, tileSize * 0.4);
+                    const lx = tx - lw / 2, ly = ty - radius - lh - 3;
+                    ctx.beginPath();
+                    if (ctx.roundRect) ctx.roundRect(lx, ly, lw, lh, 4); else ctx.rect(lx, ly, lw, lh);
+                    ctx.fillStyle = 'rgba(10,10,14,0.82)';
+                    ctx.fill();
+                    ctx.lineWidth = 1;
+                    ctx.strokeStyle = token.color;
+                    ctx.stroke();
+                    ctx.fillStyle = '#fef3c7';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(label, tx, ly + lh / 2 + 0.5);
+                }
             });
 
             // Draw Fog of War in Dungeon Mode
@@ -1595,6 +1647,7 @@ body.player-view #mist-overlay {display:none!important}
                     tokens.push(token);
                 }
                 token.name = p.characterName;
+                if (typeof p.displayName === 'string' && p.displayName) token.displayName = p.displayName;
                 // Um snapshot remoto chegando no meio do arrasto não pode puxar o token de volta.
                 if (draggedTokenId === token.id) return token;
                 if (Number.isInteger(p.x) && Number.isInteger(p.y)) {
@@ -1619,8 +1672,14 @@ body.player-view #mist-overlay {display:none!important}
                 populatePlayerSelects();
                 drawMap();
             },
+            setGmNotes(map) {
+                gmNotes = map && typeof map === 'object' ? map : {};
+                renderTreasurePanel();
+            },
             setTreasures(items) {
-                treasures = Array.isArray(items) ? items.map(t => ({...t})) : [];
+                const toList = v => Array.isArray(v) ? v.filter(Boolean) : (v && typeof v === 'object' ? Object.values(v) : []);
+                // O Realtime Database não guarda arrays vazios: sem isso, revealedTo/collectedBy chegam undefined.
+                treasures = Array.isArray(items) ? items.map(t => ({...t, id: Number(t.id), revealedTo: toList(t.revealedTo), collectedBy: toList(t.collectedBy)})) : [];
                 treasureIdCounter = Math.max(100, ...treasures.map(t => Number(t.id) || 0));
                 renderTreasurePanel();
                 drawMap();
