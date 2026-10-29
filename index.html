@@ -1173,6 +1173,8 @@ body.player-view #mist-overlay {display:none!important}
 
         // Draw Fog of War Layer
         function drawDungeonFogOverlay() {
+            // O mestre sempre enxerga toda a cripta. A névoa de guerra é apenas uma camada de visão dos jogadores.
+            if (window.firebaseRole !== 'player') return;
             for (let x = 0; x < GRID_COLS; x++) {
                 for (let y = 0; y < GRID_ROWS; y++) {
                     if (dungeonFog[x][y] === 0) {
