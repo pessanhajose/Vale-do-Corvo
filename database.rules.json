@@ -24,6 +24,7 @@
     },
 
     "players": {
+      ".read": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'",
       "$uid": {
         ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')",
         ".write": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || (auth.uid === $uid && newData.child('uid').val() === auth.uid && (!data.exists() || newData.child('characterName').val() === data.child('characterName').val())))",
