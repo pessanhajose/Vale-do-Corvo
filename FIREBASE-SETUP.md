@@ -1,52 +1,39 @@
-# Vale-do-Corvo — integração Firebase em desenvolvimento
+# Vale do Corvo — Firebase Realtime Database
 
-Esta branch contém a primeira integração de autenticação, sincronização do estado do mestre e regras de acesso do Firestore. **Ainda não é uma versão pronta para jogadores nem deve ser publicada como versão definitiva.**
+A autenticação usa Firebase Authentication (e-mail/senha) e os dados do jogo usam o **Realtime Database** em `https://vale-do-corvo-default-rtdb.firebaseio.com`. Esta integração ainda está em preparação: mantenha o acesso de jogadores bloqueado até testar as regras e remover do JavaScript público a geometria e quaisquer segredos da campanha.
 
-## O que foi implementado nesta etapa
+## O que a branch contém
 
-- Cadastro/login com Firebase Authentication (e-mail e senha).
-- Seleção de personagem no cadastro.
-- Documento `players/{uid}` para salvar personagem, mapa e posição.
-- Sincronização em tempo real do estado do mapa para contas com papel `master`.
-- Persistência inicial da névoa por conta autenticada.
-- Tesouros carregados da coleção protegida `treasures`; não há lista de tesouros embutida no HTML público.
-- Regras do Firestore que limitam sessões, tesouros e notas do mestre ao papel `master`.
-- Respostas de enigmas e o cartão público do altar foram removidos do HTML desta branch.
+- Configuração do Firebase Web SDK apontada ao Realtime Database.
+- Cadastro e login por e-mail/senha.
+- Perfis em `users/{uid}` e personagens em `players/{uid}`.
+- Sincronização inicial do estado do mestre em `sessions/main`.
+- Persistência de exploração em `exploration/{uid}` e tesouros em `treasures/{id}`.
+- Regras de Realtime Database em `database.rules.json`. O arquivo antigo `firestore.rules` não protege o Realtime Database.
 
-## O que ainda não está concluído
+## Antes de publicar ou testar com dados reais
 
-1. A geometria completa da cripta e partes do mapa ainda são definidas no JavaScript público. Um usuário técnico pode inspecionar o código-fonte. O acesso de jogador permanece bloqueado até essa geometria ser fornecida de forma filtrada/segura.
-2. A publicação de tokens visíveis por personagem (`visibleTokens/{uid}`) e descobertas (`discoveries/{uid}`) ainda precisa ser ligada à lógica de visão de cada jogador.
-3. A visão atual usa um raio circular; linha de visão bloqueada por paredes ainda precisa ser implementada.
-4. As notas antigas do mestre e os tesouros iniciais não foram migrados automaticamente para o Firestore. Eles continuam na branch original `main`; recrie-os apenas em coleções privadas do Firestore, nunca no HTML público.
-5. O histórico Git e a branch `main` ainda podem conter versões antigas com os segredos. Não trate segredos de campanha como confidenciais até revisar o que já foi publicado e o histórico do repositório.
-6. As regras precisam ser testadas com o Firebase Emulator Suite ou contas separadas antes de liberar jogadores.
+1. No Firebase Console, abra **Realtime Database → Rules**.
+2. Abra `database.rules.json` nesta branch e substitua todas as ocorrências de `REPLACE_WITH_MASTER_UID` pelo UID da conta do mestre. Não use e-mail nem senha nesse campo.
+3. Revise as regras e publique-as em **Realtime Database → Rules**. Enquanto o UID não for substituído, as operações de mestre serão negadas; não troque por regras abertas.
+4. Em **Authentication → Users**, confirme que a conta do mestre existe. Em **Realtime Database → Data**, crie/ajuste `users/{UID_DO_MESTRE}` com `role: "master"`, `displayName` e, se desejar, `createdAt`.
+5. Teste com duas contas: mestre e jogador. Confirme que o jogador não consegue ler `sessions` nem `treasures`, e que só consegue ler/escrever seu próprio perfil/personagem e exploração.
+6. Não libere jogadores ainda. A geometria da cripta e outras informações do mapa continuam no código público do site; regras de banco não escondem dados já publicados no HTML/JavaScript.
+7. O histórico do Git pode conter versões antigas de dados secretos. Considere pistas/segredos já publicados comprometidos e não reutilize senhas ou chaves privadas que tenham sido expostas.
 
-## Passo manual no Firebase (faça depois de revisar a branch)
+## Limitações conhecidas
 
-### A. Ativar autenticação
-1. Abra o [Firebase Console](https://console.firebase.google.com/) e selecione o projeto `vale-do-corvo`.
-2. Vá em **Authentication → Sign-in method** e habilite **E-mail/senha**.
-3. Em **Authentication → Settings → Authorized domains**, confirme que o domínio do GitHub Pages usado pelo site está autorizado.
+- A sincronização inicial precisa ser testada no navegador com as regras reais.
+- A visão filtrada por personagem, a publicação de tokens visíveis e a proteção da geometria do mapa não estão completas.
+- Não há migração automática dos dados antigos do Firestore/HTML para o Realtime Database.
+- O GitHub Pages hospeda apenas arquivos estáticos; não pode guardar segredos administrativos. Nunca coloque uma chave de conta de serviço no repositório.
 
-### B. Publicar as regras
-1. Abra **Firestore Database → Rules**.
-2. Copie o conteúdo completo de `firestore.rules` desta branch.
-3. Cole no editor e clique em **Publish**.
-4. Não substitua essas regras por regras abertas como `allow read, write: if true`.
+## Estrutura esperada no Realtime Database
 
-### C. Criar a conta do mestre
-1. Em **Authentication → Users**, crie um usuário com o seu e-mail e uma senha forte, ou crie a conta pelo formulário quando a branch estiver disponível para teste.
-2. Copie o **UID** dessa conta.
-3. Abra **Firestore Database → Data** e crie a coleção `users`, se ainda não existir.
-4. Crie um documento cujo ID seja exatamente o UID e adicione:
-   - `role`: string `master`
-   - `displayName`: string com o nome de exibição
-   - `createdAt`: timestamp (ou omita se criar o documento manualmente).
-5. Não permita que jogadores editem o campo `role`. O cadastro do site só cria contas com papel `player`.
-
-### D. Antes de liberar jogadores
-- Teste login do mestre e login de jogador com contas distintas.
-- Confirme que um jogador não consegue ler `sessions`, `treasures` ou `gmNotes`.
-- Confirme que cada jogador só lê o próprio documento em `players`, `exploration`, `visibleTokens` e `discoveries`.
-- Não mude o GitHub Pages para publicar esta branch para os jogadores até remover a geometria secreta do JavaScript público e concluir a filtragem de visão.
+```text
+users/{uid}
+players/{uid}
+sessions/main
+exploration/{uid}
+treasures/{treasureId}
+```
