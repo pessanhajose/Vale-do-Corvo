@@ -1600,6 +1600,9 @@ body.player-view #mist-overlay {display:none!important}
                 return token;
             },
             applyPlayerDocs(docs) {
+                const activeIds = new Set(docs.map(p => 'player-' + String(p.uid || p.characterName)));
+                // Remove heróis de sessões antigas ou de jogadores que já desconectaram.
+                tokens = tokens.filter(t => t.type !== 'hero' || activeIds.has(t.id));
                 docs.forEach(p => this.ensurePlayerToken(p));
                 populatePlayerSelects();
                 drawMap();
