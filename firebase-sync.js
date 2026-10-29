@@ -70,6 +70,7 @@ async function saveGmNotes(notes) {
       treasureId: String(id),
       answer: clip(n?.answer), success: clip(n?.success), failure: clip(n?.failure),
       reward: clip(n?.reward), notes: clip(n?.notes),
+      rewards: Array.isArray(n?.rewards) ? n.rewards.slice(0, 12).map(r => clip(r, 400)) : [],
       updatedAt: serverTimestamp(), updatedBy: activeUser.uid
     };
     try {

@@ -769,24 +769,52 @@ body.player-view #mist-overlay {display:none!important}
             });
         }
         function escapeHtml(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
-        // Jogador real enxerga só o que foi revelado ao PRÓPRIO personagem; o menu "Jogador" é só uma prévia do mestre.
-        function currentViewer(){
-            if(window.firebaseRole==='player' && window.firebaseCharacterName) return window.firebaseCharacterName;
-            return document.getElementById('active-player')?.value || defaultPlayers[0];
+        // Cada jogador é identificado pelo uid (vários jogadores podem ter a mesma classe).
+        // Jogador real enxerga só o que foi revelado a ele; o menu "Jogador" é só uma prévia do mestre.
+        function heroUid(t){ return String(t.id||'').startsWith('player-') ? String(t.id).slice(7) : null; }
+        function viewerIds(){
+            if(window.firebaseRole==='player'){
+                const u=window.firebaseUser&&window.firebaseUser.uid;
+                return u?[u]:[window.firebaseCharacterName].filter(Boolean);
+            }
+            const cls=document.getElementById('active-player')?.value||defaultPlayers[0];
+            return [cls,...tokens.filter(t=>t.type==='hero'&&t.name===cls).map(heroUid).filter(Boolean)];
         }
         function isTreasureVisible(t){
             if(!playerViewMode) return true;
-            return t.revealedTo.includes(currentViewer());
+            const ids=viewerIds();
+            return t.revealedTo.some(r=>ids.includes(r));
+        }
+        function isCollected(t){
+            if(!playerViewMode) return t.collectedBy.length>0;
+            const ids=viewerIds();
+            return t.collectedBy.some(r=>ids.includes(r));
+        }
+        function myRoll(t){
+            const ids=viewerIds();
+            for(const id of ids){ if(t.rolls&&t.rolls[id]) return t.rolls[id]; }
+            return null;
+        }
+        function recipientName(id){
+            const hero=tokens.find(t=>t.type==='hero'&&heroUid(t)===id);
+            if(!hero) return null;
+            return hero.displayName?`${hero.displayName} (${hero.name})`:hero.name;
+        }
+        function recipientLabel(t,id){ return recipientName(id)||(t.recipientNames&&t.recipientNames[id])||id; }
+        function rememberRecipients(t,ids){
+            t.recipientNames=t.recipientNames||{};
+            ids.forEach(i=>{const n=recipientName(i);if(n)t.recipientNames[i]=n;});
         }
         function drawTreasureMarkers(){
             treasures.filter(t=>t.map===currentMapMode && isTreasureVisible(t)).forEach(t=>{
                 if(playerViewMode && currentMapMode==='dungeon' && (!dungeonFog[t.x] || dungeonFog[t.x][t.y]!==1)) return;
+                const done=isCollected(t);
                 const x=t.x*tileSize+tileSize/2, y=t.y*tileSize+tileSize/2;
                 ctx.save();
-                ctx.beginPath();ctx.arc(x,y,t.collectedBy.length?tileSize*.22:tileSize*.3,0,Math.PI*2);
-                ctx.fillStyle=t.collectedBy.length?'rgba(100,116,139,.9)':'rgba(217,119,6,.95)';ctx.fill();
-                ctx.lineWidth=2;ctx.strokeStyle=t.collectedBy.length?'#cbd5e1':'#fde68a';ctx.stroke();
-                ctx.fillStyle='#1c1917';ctx.font=`bold ${Math.max(10,tileSize*.42)}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(t.collectedBy.length?'✓':'✦',x,y);
+                ctx.beginPath();ctx.arc(x,y,done?tileSize*.22:tileSize*.3,0,Math.PI*2);
+                ctx.fillStyle=done?'rgba(100,116,139,.9)':'rgba(217,119,6,.95)';ctx.fill();
+                ctx.lineWidth=2;ctx.strokeStyle=done?'#cbd5e1':'#fde68a';ctx.stroke();
+                ctx.fillStyle='#1c1917';ctx.font=`bold ${Math.max(10,tileSize*.42)}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(done?'✓':'✦',x,y);
                 if(!playerViewMode){ctx.fillStyle='#fef3c7';ctx.font='bold 10px Inter,sans-serif';ctx.fillText(t.name.substring(0,18),x,y-tileSize*.42);}
                 ctx.restore();
             });
@@ -809,14 +837,21 @@ body.player-view #mist-overlay {display:none!important}
             panel.classList.toggle('hidden',!show);
             if(show){populatePlayerSelects();renderTreasurePanel();}
         }
-        // Para quem revelar/coletar/ocultar: escolhido em cada tesouro (um jogador ou todos).
+        // Para quem revelar/coletar/ocultar/rolar: um jogador conectado (nome + classe) ou todos.
+        // Aviso não bloqueante quando o mestre rola o D12 de um tesouro para este jogador.
+        let announcedRolls = null;
+        function showRollToast(t, r) {
+            const el = document.createElement('div');
+            el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:92vw;z-index:9999;background:#1c1917;color:#fef3c7;border:2px solid #d97706;border-radius:12px;padding:12px 16px;box-shadow:0 8px 30px rgba(0,0,0,.6);font:14px Inter,sans-serif;text-align:center';
+            el.textContent = `🎲 ${t.name}: D12 = ${r.roll}. ${r.reward}`;
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 15000);
+        }
         let treasureTargets={};
         function treasureTargetOptions(){
-            const heroes=tokens.filter(t=>t.type==='hero'&&t.name);
-            const label=n=>{const h=heroes.find(t=>t.name===n);return h&&h.displayName?`${n} — ${h.displayName}`:n;};
-            const connected=[...new Set(heroes.map(t=>t.name))];
-            const others=getPlayers().filter(n=>!connected.includes(n));
-            return [...connected.map(n=>({value:n,label:label(n)+' (conectado)'})),...others.map(n=>({value:n,label:n})),{value:'__all__',label:'Todos os jogadores'}];
+            const heroes=tokens.filter(t=>t.type==='hero'&&heroUid(t));
+            if(!heroes.length) return [...defaultPlayers.map(n=>({value:n,label:n})),{value:'__all__',label:'Todos os jogadores'}];
+            return [...heroes.map(t=>({value:heroUid(t),label:`${t.displayName||'(sem nome)'} — ${t.name}`})),{value:'__all__',label:'Todos os jogadores conectados'}];
         }
         function setTreasureTarget(id,v){treasureTargets[id]=v;}
         // Atualiza as listas "Para quem?" quando um jogador entra/sai ou muda de nome, sem recolher os segredos abertos a cada movimento.
@@ -831,34 +866,71 @@ body.player-view #mist-overlay {display:none!important}
         function treasureTargetsFor(id){
             const opts=treasureTargetOptions();
             const v=treasureTargets[id]&&opts.some(o=>o.value===treasureTargets[id])?treasureTargets[id]:opts[0].value;
-            return v==='__all__'?getPlayers():[v];
+            return v==='__all__'?opts.filter(o=>o.value!=='__all__').map(o=>o.value):[v];
         }
         function treasureActionDone(msg,t){
-            document.getElementById('treasure-status').textContent=msg;
+            const st=document.getElementById('treasure-status');
+            st.className='text-[11px] text-emerald-300 mt-2';st.textContent=msg;
             renderTreasurePanel();drawMap();window.ValeCorvoSync?.saveTreasures(treasures);
+        }
+        function rollD12(){
+            const a=new Uint32Array(1),lim=Math.floor(0xFFFFFFFF/12)*12;let v;
+            do{crypto.getRandomValues(a);v=a[0];}while(v>=lim);
+            return v%12+1;
+        }
+        // Rolagem de recompensa: o resultado do D12 escolhe a linha da tabela secreta do tesouro.
+        function rollTreasure(id,manual){
+            const t=treasures.find(x=>x.id===id);if(!t)return;
+            const st=document.getElementById('treasure-status');
+            const fail=m=>{st.className='text-[11px] text-red-300 mt-2';st.textContent=m;};
+            const table=gmNotes[t.id]&&gmNotes[t.id].rewards;
+            if(!Array.isArray(table)||table.length<12) return fail('Este tesouro não tem tabela D12. Importe o arquivo .json de novo.');
+            const who=treasureTargetsFor(id);
+            let fixed=null;
+            if(manual){
+                if(who.length>1) return fail('Para informar o dado físico, escolha um jogador em “Para quem?”.');
+                const el=document.getElementById('manual-roll-'+id);
+                fixed=parseInt(el&&el.value,10);
+                if(!(fixed>=1&&fixed<=12)) return fail('Digite um resultado de 1 a 12.');
+            }
+            rememberRecipients(t,who);
+            t.rolls=t.rolls||{};
+            const out=[];
+            who.forEach(p=>{
+                if(t.rolls[p]&&!confirm(`${recipientLabel(t,p)} já rolou ${t.rolls[p].roll} neste tesouro. Rolar de novo?`)) return;
+                const roll=fixed||rollD12();
+                t.rolls[p]={roll,reward:String(table[roll-1]||'').slice(0,400)};
+                if(!t.revealedTo.includes(p)) t.revealedTo.push(p);
+                if(!t.collectedBy.includes(p)) t.collectedBy.push(p);
+                out.push(`${recipientLabel(t,p)}: 🎲 ${roll}`);
+            });
+            if(out.length) treasureActionDone(`“${t.name}” — ${out.join(' · ')}`,t);
         }
         function revealTreasure(id){
             const t=treasures.find(x=>x.id===id);if(!t)return;
             const who=treasureTargetsFor(id);
+            rememberRecipients(t,who);
             who.forEach(p=>{if(!t.revealedTo.includes(p))t.revealedTo.push(p);});
-            treasureActionDone(`“${t.name}” revelado para ${who.join(', ')}.`,t);
+            treasureActionDone(`“${t.name}” revelado para ${who.map(p=>recipientLabel(t,p)).join(', ')}.`,t);
         }
         function collectTreasure(id){
             const t=treasures.find(x=>x.id===id);if(!t)return;
             const who=treasureTargetsFor(id);
+            rememberRecipients(t,who);
             who.forEach(p=>{if(!t.collectedBy.includes(p))t.collectedBy.push(p);});
-            treasureActionDone(`“${t.name}” marcado como coletado por ${who.join(', ')}.`,t);
+            treasureActionDone(`“${t.name}” marcado como coletado por ${who.map(p=>recipientLabel(t,p)).join(', ')}.`,t);
         }
         function hideTreasure(id){
             const t=treasures.find(x=>x.id===id);if(!t)return;
             const who=treasureTargetsFor(id);
             t.revealedTo=t.revealedTo.filter(n=>!who.includes(n));
-            treasureActionDone(`A descoberta de “${t.name}” foi ocultada para ${who.join(', ')}.`,t);
+            treasureActionDone(`A descoberta de “${t.name}” foi ocultada para ${who.map(p=>recipientLabel(t,p)).join(', ')}.`,t);
         }
         function renderGmSecrets(t){
             const n=gmNotes[t.id]; if(!n) return '';
+            const table=Array.isArray(n.rewards)?n.rewards:[];
             const row=(label,v)=>v?`<p class="mt-1"><b class="text-red-200">${label}:</b> ${escapeHtml(v)}</p>`:'';
-            return `<details class="mt-2 text-xs text-gray-300 border border-red-900/60 rounded p-2 bg-black/30"><summary class="cursor-pointer text-red-300 font-bold">🔒 Segredos do mestre</summary>${row('Resposta / solução',n.answer)}${row('Se acertar',n.success)}${row('Se errar',n.failure)}${row('Recompensa',n.reward)}${row('Notas',n.notes)}</details>`;
+            return `<details class="mt-2 text-xs text-gray-300 border border-red-900/60 rounded p-2 bg-black/30"><summary class="cursor-pointer text-red-300 font-bold">🔒 Segredos do mestre</summary>${row('Resposta / solução',n.answer)}${row('Se acertar',n.success)}${row('Se errar',n.failure)}${row('Recompensa',n.reward)}${row('Notas',n.notes)}${table.length?`<p class="mt-1"><b class="text-red-200">Tabela D12:</b></p><ol class="list-decimal pl-5 space-y-0.5">${table.map(r=>`<li>${escapeHtml(r)}</li>`).join('')}</ol>`:''}</details>`;
         }
         function importTreasuresFile(input){
             const file=input.files&&input.files[0]; if(!file) return;
@@ -892,9 +964,11 @@ body.player-view #mist-overlay {display:none!important}
               <div class="flex items-start justify-between gap-2"><div><div class="text-sm font-bold text-amber-200">${escapeHtml(t.name)}</div><div class="text-[10px] uppercase tracking-wide text-gray-400">${t.map==='dungeon'?'Cripta':'Vale-Corvo'} · ${escapeHtml(t.kind)} · ${getColumnLetter(t.x)}${t.y+1}</div></div><span class="text-[10px] ${t.collectedBy.length?'text-slate-300':t.revealedTo.length?'text-emerald-300':'text-gray-500'}">${t.collectedBy.length?'Coletado':t.revealedTo.length?'Revelado':'Oculto'}</span></div>
               <p class="text-xs text-gray-300 mt-2"><b>Descrição:</b> ${escapeHtml(t.description)}</p><p class="text-xs text-gray-400 mt-1"><b>Pista:</b> ${escapeHtml(t.hint)} <span class="text-amber-200">(CD ${t.dc})</span></p>
               ${renderGmSecrets(t)}
+              ${Object.entries(t.rolls||{}).map(([p,r])=>`<p class="text-[11px] text-amber-200 mt-2">🎲 ${escapeHtml(recipientLabel(t,p))}: <b>${Number(r.roll)}</b> → ${escapeHtml(r.reward)}</p>`).join('')}
               <label class="block text-[11px] text-gray-300 mt-2">Para quem?<select onchange="setTreasureTarget(${t.id},this.value)" class="mt-1 w-full bg-gothic-950 border border-gothic-600 rounded p-1.5 text-xs text-gray-100">${treasureTargetOptions().map((o,i)=>`<option value="${escapeHtml(o.value)}" ${(treasureTargets[t.id]?treasureTargets[t.id]===o.value:i===0)?'selected':''}>${escapeHtml(o.label)}</option>`).join('')}</select></label>
               <div class="flex flex-wrap gap-1.5 mt-2"><button onclick="revealTreasure(${t.id})" class="px-2 py-1 rounded bg-emerald-900 hover:bg-emerald-800 text-[10px] border border-emerald-700">Revelar</button><button onclick="hideTreasure(${t.id})" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] border border-slate-600">Ocultar</button><button onclick="collectTreasure(${t.id})" class="px-2 py-1 rounded bg-amber-900 hover:bg-amber-800 text-[10px] border border-amber-700">Marcar coletado</button></div>
-              <p class="text-[10px] text-gray-500 mt-1">Revelado para: ${t.revealedTo.length?escapeHtml(t.revealedTo.join(', ')):'ninguém'}${t.collectedBy.length?' · Coletado por: '+escapeHtml(t.collectedBy.join(', ')):''}</p></div>`).join('');
+              <div class="flex flex-wrap items-center gap-1.5 mt-2"><button onclick="rollTreasure(${t.id})" class="px-2 py-1 rounded bg-red-900 hover:bg-red-800 text-[10px] border border-red-700">🎲 Rolar D12 (recompensa)</button><input id="manual-roll-${t.id}" type="number" min="1" max="12" placeholder="dado" class="w-16 bg-gothic-950 border border-gothic-600 rounded p-1 text-[11px] text-gray-100" title="Resultado do seu dado físico (1 a 12)"><button onclick="rollTreasure(${t.id},true)" class="px-2 py-1 rounded bg-gothic-800 hover:bg-gothic-700 text-[10px] border border-gothic-600">Usar meu dado</button></div>
+              <p class="text-[10px] text-gray-500 mt-1">Revelado para: ${t.revealedTo.length?escapeHtml(t.revealedTo.map(r=>recipientLabel(t,r)).join(', ')):'ninguém'}${t.collectedBy.length?' · Coletado por: '+escapeHtml(t.collectedBy.map(r=>recipientLabel(t,r)).join(', ')):''}</p></div>`).join('');
         }
         function addCustomTreasure(){
             const name=prompt('Nome do tesouro:');if(!name)return;
@@ -909,7 +983,7 @@ body.player-view #mist-overlay {display:none!important}
         }
         function resetTreasureReveals(){
             if(!confirm('Apagar todas as descobertas e marcações de coleta?'))return;
-            treasures.forEach(t=>{t.revealedTo=[];t.collectedBy=[];});
+            treasures.forEach(t=>{t.revealedTo=[];t.collectedBy=[];t.rolls={};});
             document.getElementById('treasure-status').textContent='Todas as revelações e coletas foram resetadas.';
             renderTreasurePanel();drawMap();window.ValeCorvoSync?.saveTreasures(treasures);
         }
@@ -1407,10 +1481,12 @@ body.player-view #mist-overlay {display:none!important}
             const mx = (e.clientX - rect.left - offsetX) / scale;
             const my = (e.clientY - rect.top - offsetY) / scale;
             const gx = Math.floor(mx / tileSize), gy = Math.floor(my / tileSize);
-            const player = currentViewer();
-            const t = treasures.find(item => item.map === currentMapMode && item.x === gx && item.y === gy && item.revealedTo.includes(player));
+            const ids = viewerIds();
+            const t = treasures.find(item => item.map === currentMapMode && item.x === gx && item.y === gy && item.revealedTo.some(r => ids.includes(r)));
             if (t) {
-                alert(`${t.name}\n${t.kind}${t.collectedBy.includes(player) ? ' · Já coletado' : ''}\n\n${t.description}`);
+                const roll = myRoll(t);
+                alert(`${t.name}\n${t.kind}${isCollected(t) ? ' · Já coletado' : ''}\n\n${t.description}` +
+                    (roll ? `\n\n🎲 D12 = ${roll.roll}\nRecompensa: ${roll.reward}` : ''));
             }
         });
 
@@ -1703,7 +1779,13 @@ body.player-view #mist-overlay {display:none!important}
                 drawMap();
             },
             setGmNotes(map) {
-                gmNotes = map && typeof map === 'object' ? map : {};
+                const out = {};
+                Object.entries(map && typeof map === 'object' ? map : {}).forEach(([k, n]) => {
+                    if (!n) return;
+                    const r = n.rewards;
+                    out[k] = {...n, rewards: Array.isArray(r) ? r : (r && typeof r === 'object' ? Object.values(r) : [])};
+                });
+                gmNotes = out;
                 renderTreasurePanel();
             },
             setTreasures(items) {
@@ -1711,6 +1793,15 @@ body.player-view #mist-overlay {display:none!important}
                 // O Realtime Database não guarda arrays vazios: sem isso, revealedTo/collectedBy chegam undefined.
                 treasures = Array.isArray(items) ? items.map(t => ({...t, id: Number(t.id), revealedTo: toList(t.revealedTo), collectedBy: toList(t.collectedBy)})) : [];
                 treasureIdCounter = Math.max(100, ...treasures.map(t => Number(t.id) || 0));
+                if (window.firebaseRole === 'player' && window.firebaseUser && window.firebaseUser.uid) {
+                    const ids = viewerIds(), now = new Set();
+                    treasures.forEach(t => ids.forEach(id => {
+                        const r = t.rolls && t.rolls[id]; if (!r) return;
+                        const key = `${t.id}:${id}:${r.roll}`; now.add(key);
+                        if (announcedRolls && !announcedRolls.has(key)) showRollToast(t, r);
+                    }));
+                    announcedRolls = now;
+                }
                 renderTreasurePanel();
                 drawMap();
             },
