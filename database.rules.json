@@ -1,0 +1,90 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "users": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')",
+        ".write": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || (auth.uid === $uid && newData.child('role').val() === 'player' && (!data.exists() || data.child('role').val() === 'player')))",
+        ".validate": "newData.hasChildren(['role','displayName'])",
+        "role": {
+          ".validate": "newData.isString() && (newData.val() === 'player' || (auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' && newData.val() === 'master'))"
+        },
+        "displayName": {
+          ".validate": "newData.isString() && newData.val().length <= 60"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber() || !newData.exists()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "players": {
+      ".read": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')",
+        ".write": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || (auth.uid === $uid && newData.child('uid').val() === auth.uid && (!data.exists() || newData.child('characterName').val() === data.child('characterName').val())))",
+        ".validate": "newData.hasChildren(['uid','characterName','map','x','y']) && newData.child('uid').val() === $uid && (newData.child('characterName').val() === 'Guerreiro' || newData.child('characterName').val() === 'Mago' || newData.child('characterName').val() === 'Ladino' || newData.child('characterName').val() === 'Clérigo') && (newData.child('map').val() === 'overworld' || newData.child('map').val() === 'dungeon') && newData.child('x').isNumber() && newData.child('x').val() >= 0 && newData.child('x').val() < 50 && newData.child('y').isNumber() && newData.child('y').val() >= 0 && newData.child('y').val() < 40",
+        "uid": {
+          ".validate": "newData.isString()"
+        },
+        "characterName": {
+          ".validate": "newData.isString()"
+        },
+        "map": {
+          ".validate": "newData.isString()"
+        },
+        "x": {
+          ".validate": "newData.isNumber()"
+        },
+        "y": {
+          ".validate": "newData.isNumber()"
+        },
+        "updatedAt": {
+          ".validate": "newData.isNumber() || !newData.exists()"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
+    },
+    "sessions": {
+      "$sessionId": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'"
+      }
+    },
+    "exploration": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')",
+        ".write": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')"
+      }
+    },
+    "visibleTokens": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')",
+        ".write": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'"
+      }
+    },
+    "discoveries": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82')",
+        ".write": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'"
+      }
+    },
+    "treasures": {
+      "$treasureId": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'"
+      }
+    },
+    "gmNotes": {
+      "$noteId": {
+        ".read": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'",
+        ".write": "auth != null && auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82'"
+      }
+    }
+  }
+}

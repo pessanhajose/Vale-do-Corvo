@@ -104,8 +104,65 @@ body.player-view #token-tray, body.player-view #sidebar, body.player-view #dunge
 body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {display:none!important}
 @media(max-width:800px){#treasure-panel{left:3vw!important;right:3vw!important;width:auto!important;max-width:none!important} #player-view-controls{max-width:48vw;}}
 </style>
+
+<style>
+#auth-gate{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:1rem;background:rgba(5,7,12,.97);backdrop-filter:blur(12px)}
+#auth-gate.hidden{display:none!important}
+#firebase-auth-form input{width:100%;background:#090a0f;border:1px solid #3a4063;border-radius:.5rem;padding:.7rem;color:#f8fafc;outline:none}
+#firebase-auth-form input:focus{border-color:#d4af37}
+#firebase-auth-form button:disabled{opacity:.55;cursor:wait}
+#firebase-user-bar{max-width:calc(100vw - 1.5rem)}
+</style>
+
 </head>
 <body class="h-screen flex flex-col bg-gothic-950 text-gray-100 overflow-hidden">
+    <!-- Firebase Authentication Gate: a versão de jogador só será liberada após remover segredos do código público. -->
+    <div id="auth-gate">
+        <section id="firebase-login-card" class="w-full max-w-md rounded-2xl border border-corvo-gold bg-gothic-900 p-6 shadow-2xl">
+            <div class="text-center mb-5">
+                <div class="text-corvo-gold text-3xl mb-2"><i class="fa-solid fa-crow"></i></div>
+                <h2 class="font-gothic text-xl text-corvo-gold font-bold">Vale-Corvo</h2>
+                <p class="text-sm text-gray-400 mt-1">Entre para acessar o painel do mestre</p>
+            </div>
+            <form id="firebase-auth-form" class="space-y-3">
+                <div id="firebase-name-wrap" class="hidden">
+                    <label class="block text-xs text-gray-300 mb-1" for="firebase-display-name">Nome de exibição</label>
+                    <input id="firebase-display-name" type="text" maxlength="60" autocomplete="nickname" placeholder="Nome do mestre ou jogador">
+                </div>
+                <div id="firebase-character-wrap" class="hidden">
+                    <label class="block text-xs text-gray-300 mb-1" for="firebase-character-name">Personagem</label>
+                    <select id="firebase-character-name" class="w-full bg-gothic-950 border border-gothic-600 rounded-lg p-2 text-gray-100">
+                        <option value="Guerreiro">Guerreiro</option>
+                        <option value="Mago">Mago</option>
+                        <option value="Ladino">Ladino</option>
+                        <option value="Clérigo">Clérigo</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-300 mb-1" for="firebase-email">E-mail</label>
+                    <input id="firebase-email" type="email" autocomplete="email" required placeholder="voce@exemplo.com">
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-300 mb-1" for="firebase-password">Senha</label>
+                    <input id="firebase-password" type="password" minlength="6" autocomplete="current-password" required placeholder="Mínimo de 6 caracteres">
+                </div>
+                <button id="firebase-auth-submit" type="submit" class="w-full rounded-lg border border-corvo-gold bg-blood-800 hover:bg-blood-700 py-2.5 font-gothic font-bold text-corvo-gold">Entrar</button>
+            </form>
+            <button id="firebase-auth-mode" type="button" class="w-full mt-3 text-sm text-gray-300 underline hover:text-corvo-gold">Criar uma conta</button>
+            <p id="firebase-auth-message" class="text-sm text-emerald-300 mt-3" role="status" aria-live="polite"></p>
+            <p class="text-[11px] text-gray-500 mt-4">As novas contas recebem acesso de jogador. O papel de mestre deve ser atribuído manualmente no Console do Firebase.</p>
+        </section>
+        <section id="firebase-player-not-ready" class="hidden w-full max-w-md rounded-2xl border border-amber-700 bg-gothic-900 p-6 shadow-2xl">
+            <h2 class="font-gothic text-xl text-amber-200 font-bold">Conta de jogador criada</h2>
+            <p class="text-sm text-gray-300 mt-3">O acesso ao mapa dos jogadores ainda está bloqueado nesta etapa. Precisamos primeiro mover as notas do mestre e os segredos para dados protegidos do Realtime Database. Isso evita que informações secretas fiquem disponíveis no código público do site.</p>
+            <button id="firebase-logout" type="button" class="mt-5 rounded-lg border border-gothic-600 bg-gothic-800 px-4 py-2 text-sm hover:bg-gothic-700">Sair da conta</button>
+        </section>
+    </div>
+    <div id="firebase-user-bar" class="hidden fixed bottom-3 left-3 z-50 items-center gap-3 rounded-lg border border-gothic-600 bg-gothic-900/95 px-3 py-2 shadow-xl">
+        <span id="firebase-user-label" class="text-xs text-gray-200"></span>
+        <button id="firebase-logout-master" type="button" class="rounded border border-gothic-600 px-2 py-1 text-xs hover:bg-gothic-700">Sair</button>
+    </div>
+
 
     <!-- Top Navigation / Toolbar -->
     <header class="bg-gothic-900 border-b border-gothic-700 px-4 py-3 flex flex-wrap items-center justify-between z-30 shadow-lg">
@@ -349,17 +406,6 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                         <p class="text-xs text-gray-300 line-clamp-2">Picos rochosos e desfiladeiros perigosos infestados por bestas nebulosas.</p>
                     </div>
 
-                    <!-- POI 5 -->
-                    <div onclick="focusPoi(5)" class="bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 rounded-lg p-3 cursor-pointer transition group shadow">
-                        <div class="flex items-center justify-between mb-1">
-                            <h3 class="font-gothic font-bold text-corvo-gold text-sm group-hover:underline flex items-center gap-2">
-                                <i class="fa-solid fa-skull-crossbones text-emerald-500"></i> Altar de Sangue Oculto
-                            </h3>
-                            <span class="text-[10px] bg-emerald-950 text-emerald-200 px-2 py-0.5 rounded border border-emerald-800">Setor AF32</span>
-                        </div>
-                        <p class="text-xs text-gray-300 line-clamp-2">Santuário profano cercado por megálitos de pedra negra onde o pacto de Roderick é mantido.</p>
-                    </div>
-
                     <!-- POI 6 -->
                     <div onclick="focusPoi(6)" class="bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 rounded-lg p-3 cursor-pointer transition group shadow">
                         <div class="flex items-center justify-between mb-1">
@@ -403,56 +449,56 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                             <div class="text-[10px] uppercase tracking-wider text-emerald-300 font-bold">Fora da masmorra · Floresta dos Sussurros</div>
                             <p class="text-xs text-gray-200"><strong>1. A voz sem boca</strong><br>“Não tenho boca, mas repito o que dizes. Quanto mais fundo entras, mais perto pareço estar. O que sou?”</p>
                             <p class="text-[11px] text-gray-400">Pista: as árvores devolvem sons.</p>
-                            <details class="text-xs text-corvo-gold"><summary class="cursor-pointer">Resposta e consequência</summary><p class="mt-2 text-gray-300">Resposta: <strong>eco</strong>. Se responderem, os sussurros apontam para uma trilha segura. Se falharem, um som falso os desvia por alguns minutos.</p></details>
+                            <p class="text-[11px] text-amber-200">A resposta e a consequência são conteúdo privado do mestre e não ficam embutidas no HTML público.</p>
                         </div>
 
                         <div class="border border-slate-700 rounded-md p-3 space-y-1.5">
                             <div class="text-[10px] uppercase tracking-wider text-emerald-300 font-bold">Fora da masmorra · Cemitério Esquecido</div>
                             <p class="text-xs text-gray-200"><strong>2. O guardião silencioso</strong><br>“Tenho cidades sem casas, rios sem água e caminhos sem viajantes. Os mortos me visitam, mas não podem me ler.”</p>
                             <p class="text-[11px] text-gray-400">Pista: pode ser segurado nas mãos.</p>
-                            <details class="text-xs text-corvo-gold"><summary class="cursor-pointer">Resposta e consequência</summary><p class="mt-2 text-gray-300">Resposta: <strong>um mapa</strong>. Sob uma lápide há um mapa antigo. Se errarem, a névoa cobre os marcos e exige um teste de Sobrevivência.</p></details>
+                            <p class="text-[11px] text-amber-200">A resposta e a consequência são conteúdo privado do mestre e não ficam embutidas no HTML público.</p>
                         </div>
 
                         <div class="border border-slate-700 rounded-md p-3 space-y-1.5">
                             <div class="text-[10px] uppercase tracking-wider text-emerald-300 font-bold">Fora da masmorra · Portão do castelo</div>
                             <p class="text-xs text-gray-200"><strong>3. O preço da passagem</strong><br>“O Barão me tem, mas não pode me guardar. Se me oferece, perde algo; se me quebra, perde ainda mais. O que sou?”</p>
                             <p class="text-[11px] text-gray-400">Pista: está ligado a uma promessa.</p>
-                            <details class="text-xs text-corvo-gold"><summary class="cursor-pointer">Resposta e consequência</summary><p class="mt-2 text-gray-300">Resposta: <strong>uma palavra dada / juramento</strong>. Dizer um juramento sincero abre o portão. Mentir faz os corvos grasnarem e alerta os guardas.</p></details>
+                            <p class="text-[11px] text-amber-200">A resposta e a consequência são conteúdo privado do mestre e não ficam embutidas no HTML público.</p>
                         </div>
 
                         <div class="border border-slate-700 rounded-md p-3 space-y-1.5">
                             <div class="text-[10px] uppercase tracking-wider text-red-300 font-bold">Dentro da cripta · Porta de pedra</div>
                             <p class="text-xs text-gray-200"><strong>4. O que cresce no escuro</strong><br>“Alimento-me do medo, cresço sem raízes e desapareço quando sou revelado. O que sou?”</p>
                             <p class="text-[11px] text-gray-400">Pista: uma chama pode ajudar, mas não resolve tudo.</p>
-                            <details class="text-xs text-corvo-gold"><summary class="cursor-pointer">Resposta e consequência</summary><p class="mt-2 text-gray-300">Resposta: <strong>um segredo</strong>. Para abrir a porta, cada jogador deve revelar um segredo fictício do personagem. Se ninguém aceitar, a porta abre após um custo: ruído que atrai uma criatura.</p></details>
+                            <p class="text-[11px] text-amber-200">A resposta e a consequência são conteúdo privado do mestre e não ficam embutidas no HTML público.</p>
                         </div>
 
                         <div class="border border-slate-700 rounded-md p-3 space-y-1.5">
                             <div class="text-[10px] uppercase tracking-wider text-red-300 font-bold">Dentro da cripta · Câmara dos sarcófagos</div>
                             <p class="text-xs text-gray-200"><strong>5. Os três nomes</strong><br>“O primeiro foi amado, o segundo foi temido, o terceiro foi esquecido. Qual deles ainda vive?”</p>
                             <p class="text-[11px] text-gray-400">Pista: procurem inscrições nos sarcófagos.</p>
-                            <details class="text-xs text-corvo-gold"><summary class="cursor-pointer">Resposta e consequência</summary><p class="mt-2 text-gray-300">Resposta: <strong>o esquecido</strong>, pois seu nome continua oculto e pode ser pronunciado. O nome correto está gravado sob a tampa sem inscrição. Se escolherem outro, uma mão morta agarra o tornozelo de quem abriu o sarcófago.</p></details>
+                            <p class="text-[11px] text-amber-200">A resposta e a consequência são conteúdo privado do mestre e não ficam embutidas no HTML público.</p>
                         </div>
 
                         <div class="border border-slate-700 rounded-md p-3 space-y-1.5">
                             <div class="text-[10px] uppercase tracking-wider text-red-300 font-bold">Dentro da cripta · Corredor das tochas</div>
                             <p class="text-xs text-gray-200"><strong>6. A chama impossível</strong><br>“Quanto mais de mim tiras, maior eu fico. A luz me revela, mas não me preenche. O que sou?”</p>
                             <p class="text-[11px] text-gray-400">Pista: olhem para o chão, não para as paredes.</p>
-                            <details class="text-xs text-corvo-gold"><summary class="cursor-pointer">Resposta e consequência</summary><p class="mt-2 text-gray-300">Resposta: <strong>um buraco</strong>. O grupo deve cobrir uma abertura no piso com uma placa de pedra próxima. Resposta errada: quem avançar sem testar cai numa cavidade rasa e faz barulho.</p></details>
+                            <p class="text-[11px] text-amber-200">A resposta e a consequência são conteúdo privado do mestre e não ficam embutidas no HTML público.</p>
                         </div>
 
                         <div class="border border-slate-700 rounded-md p-3 space-y-1.5">
                             <div class="text-[10px] uppercase tracking-wider text-red-300 font-bold">Dentro da cripta · Altar do Pacto</div>
                             <p class="text-xs text-gray-200"><strong>7. A oferta do pacto</strong><br>“Não sou carne, mas posso ser arrancado. Não sou ouro, mas posso ser vendido. Quando sou quebrado, até reis caem.”</p>
                             <p class="text-[11px] text-gray-400">Pista: pensem no que mantém uma promessa de pé.</p>
-                            <details class="text-xs text-corvo-gold"><summary class="cursor-pointer">Resposta e consequência</summary><p class="mt-2 text-gray-300">Resposta: <strong>confiança</strong> (aceite também “honra”). O altar exige que alguém recuse uma oferta tentadora em voz alta. Se aceitarem o poder oferecido, ganham uma vantagem temporária, mas ficam marcados pela névoa.</p></details>
+                            <p class="text-[11px] text-amber-200">A resposta e a consequência são conteúdo privado do mestre e não ficam embutidas no HTML público.</p>
                         </div>
 
                         <div class="border border-slate-700 rounded-md p-3 space-y-1.5">
                             <div class="text-[10px] uppercase tracking-wider text-purple-300 font-bold">Fora ou dentro · Enigma portátil</div>
                             <p class="text-xs text-gray-200"><strong>8. O companheiro invisível</strong><br>“Nasço contigo, cresço ao teu lado, sigo-te na luz e abandono-te no escuro. O que sou?”</p>
                             <p class="text-[11px] text-gray-400">Pista: a tocha muda a resposta.</p>
-                            <details class="text-xs text-corvo-gold"><summary class="cursor-pointer">Resposta e consequência</summary><p class="mt-2 text-gray-300">Resposta: <strong>sombra</strong>. Uma sombra aponta para uma passagem escondida. Se falharem, a sombra de um personagem se move sozinha por um instante, sugerindo que algo os observa.</p></details>
+                            <p class="text-[11px] text-amber-200">A resposta e a consequência são conteúdo privado do mestre e não ficam embutidas no HTML público.</p>
                         </div>
                     </div>
 
@@ -468,41 +514,14 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                     </div>
                 </div>
 
-                <!-- GM Notes Tab -->
+                <!-- Notas secretas não ficam no HTML público. São carregadas apenas de documentos protegidos do Realtime Database. -->
                 <div id="tab-gm" class="space-y-4 hidden">
-                    <div class="bg-blood-950/60 border border-blood-800 rounded-lg p-3.5 space-y-2">
-                        <h3 class="font-gothic font-bold text-red-400 text-sm flex items-center gap-2">
-                            <i class="fa-solid fa-triangle-exclamation"></i> Encontros Randômicos na Névoa
-                        </h3>
-                        <p class="text-xs text-gray-300">Role 1d6 a cada 2 horas de viagem ou ao entrar nas Montanhas Estéreis:</p>
-                        <ul class="text-xs text-gray-300 space-y-1 pl-4 list-disc">
-                            <li><strong>1-2:</strong> 1d4 Cultistas errantes transportando oferendas.</li>
-                            <li><strong>3-4:</strong> 1 Besta da Névoa (Estatísticas de Lobo Cruel com camuflagem na névoa).</li>
-                            <li><strong>5:</strong> Camponês fugitivo implorando por resgate.</li>
-                            <li><strong>6:</strong> Visão do Corvo Negro (Teste de Sabedoria DC 12 ou ganha 1 nível de exaustão por pavor).</li>
-                        </ul>
-                    </div>
-
-                    <div class="bg-gothic-800 border border-gothic-700 rounded-lg p-3.5 space-y-2">
-                        <h3 class="font-gothic font-bold text-corvo-gold text-sm flex items-center gap-2">
-                            <i class="fa-solid fa-key"></i> Segredos do Castelo & Altar
-                        </h3>
-                        <p class="text-xs text-gray-300 leading-relaxed">
-                            O Altar do Pacto pode ser destruído com magia sagrada de 3º círculo ou superior, mas isso fará com que os Campos Férteis apodreçam instantaneamente, iniciando uma Grande Fome no baronato. O Barão Roderick lutará até a morte para proteger o altar.
-                        </p>
-                    </div>
-
-                    <div class="bg-gothic-800 border border-gothic-700 rounded-lg p-3.5 space-y-2">
-                        <h3 class="font-gothic font-bold text-corvo-gold text-sm flex items-center gap-2">
-                            <i class="fa-solid fa-dice-d20"></i> Ferramenta de Rolagem Rápida
-                        </h3>
-                        <div class="flex items-center space-x-2 pt-1">
-                            <button onclick="rollDice(20)" class="px-3 py-1.5 bg-gothic-700 hover:bg-gothic-600 rounded text-xs font-bold text-corvo-gold border border-gothic-500">
-                                D20
-                            </button>
-                            <button onclick="rollDice(6)" class="px-3 py-1.5 bg-gothic-700 hover:bg-gothic-600 rounded text-xs font-bold text-corvo-gold border border-gothic-500">
-                                1d6
-                            </button>
+                    <div class="bg-gothic-800 border border-gothic-700 rounded-lg p-4 space-y-2">
+                        <h3 class="font-gothic font-bold text-corvo-gold text-sm">Área privada do mestre</h3>
+                        <p class="text-xs text-gray-300">As notas de campanha devem ser cadastradas no Realtime Database, na coleção protegida do mestre. Este arquivo público não contém mais as notas secretas antigas.</p>
+                        <div class="flex items-center gap-2 pt-2">
+                            <button onclick="rollDice(20)" class="px-3 py-1.5 bg-gothic-700 hover:bg-gothic-600 rounded text-xs font-bold text-corvo-gold border border-gothic-500">D20</button>
+                            <button onclick="rollDice(6)" class="px-3 py-1.5 bg-gothic-700 hover:bg-gothic-600 rounded text-xs font-bold text-corvo-gold border border-gothic-500">1d6</button>
                             <span id="dice-result" class="text-xs font-mono text-emerald-400 font-bold">Resultado: -</span>
                         </div>
                     </div>
@@ -634,19 +653,15 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             { id: 2, name: "Povoado Névoa-Fria", x: 22, y: 12, col: 'V', row: 12, icon: 'fa-house-chimney-crack', desc: "Casas decrépitas de madeira podre sobre estrados de barro. Os aldeões vivem amendrontados." },
             { id: 3, name: "Floresta dos Sussurros", x: 36, y: 15, col: 'AJ', row: 15, icon: 'fa-tree', desc: "Um bolsão de pinheiros negros e árvores retorcidas. Folhas sussurram os nomes dos mortos." },
             { id: 4, name: "Montanhas Estéreis", x: 12, y: 30, col: 'L', row: 30, icon: 'fa-mountain', desc: "Penhascos de granito escuro, desfiladeiros gelados e pedregulhos instáveis." },
-            { id: 5, name: "Altar de Sangue Oculto", x: 32, y: 32, col: 'AF', row: 32, icon: 'fa-skull-crossbones', desc: "Megálitos negros dispostos em círculo. Gravuras esmeralda brilham no chão profano." },
             { id: 6, name: "Cemitério Esquecido", x: 17, y: 24, col: 'Q', row: 24, icon: 'fa-cross', desc: "Lápidas tombadas cobertas por musgo escuro e solo fofo de sepulturas profanadas." }
         ];
 
         // Tokens
         let tokens = [
-            { id: 1, type: 'hero', name: 'Guerreiro', color: '#3b82f6', x: 21, y: 13, icon: 'fa-shield-halved' },
-            { id: 2, type: 'hero', name: 'Mago', color: '#8b5cf6', x: 20, y: 14, icon: 'fa-hat-wizard' },
-            { id: 3, type: 'hero', name: 'Ladino', color: '#10b981', x: 22, y: 14, icon: 'fa-mask' },
-            { id: 4, type: 'hero', name: 'Clérigo', color: '#eab308', x: 21, y: 15, icon: 'fa-ankh' },
-            { id: 5, type: 'boss', name: 'Barão Roderick', color: '#b91c1c', x: 8, y: 9, icon: 'fa-crown' },
-            { id: 6, type: 'enemy', name: 'Cultista', color: '#991b1b', x: 31, y: 31, icon: 'fa-skull' },
-            { id: 7, type: 'enemy', name: 'Besta da Névoa', color: '#7f1d1d', x: 14, y: 28, icon: 'fa-wolf-pack-battalion' }
+            { id: 1, type: 'hero', name: 'Guerreiro', color: '#3b82f6', x: 21, y: 13, icon: 'fa-shield-halved', map: 'overworld' },
+            { id: 2, type: 'hero', name: 'Mago', color: '#8b5cf6', x: 20, y: 14, icon: 'fa-hat-wizard', map: 'overworld' },
+            { id: 3, type: 'hero', name: 'Ladino', color: '#10b981', x: 22, y: 14, icon: 'fa-mask', map: 'overworld' },
+            { id: 4, type: 'hero', name: 'Clérigo', color: '#eab308', x: 21, y: 15, icon: 'fa-ankh', map: 'overworld' }
         ];
 
         let draggedTokenId = null;
@@ -673,6 +688,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 dungeonQuick.classList.remove('hidden');
             }
             drawMap();
+            window.ValeCorvoSync?.queueSessionSave();
         }
 
         function setTool(tool) {
@@ -696,10 +712,12 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 }
             }
             drawMap();
+            window.ValeCorvoSync?.saveExploration();
+            window.ValeCorvoSync?.queueSessionSave();
         }
 
-        function revealAllFog() { initDungeonFog(1); drawMap(); }
-        function hideAllFog() { initDungeonFog(0); drawMap(); }
+        function revealAllFog() { initDungeonFog(1); drawMap(); window.ValeCorvoSync?.saveExploration(); window.ValeCorvoSync?.queueSessionSave(); }
+        function hideAllFog() { initDungeonFog(0); drawMap(); window.ValeCorvoSync?.saveExploration(); window.ValeCorvoSync?.queueSessionSave(); }
 
         function setVisionRadius(value) {
             visionRadius = Math.max(2, Math.min(12, parseInt(value, 10) || 4));
@@ -707,6 +725,8 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             if (label) label.textContent = `${visionRadius}q`;
             if (currentMapMode === 'dungeon') updateTorchVision();
             drawMap();
+            window.ValeCorvoSync?.saveExploration();
+            window.ValeCorvoSync?.queueSessionSave();
         }
 
         function toggleMagicVision() {
@@ -721,6 +741,8 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             }
             updateTorchVision();
             drawMap();
+            window.ValeCorvoSync?.saveExploration();
+            window.ValeCorvoSync?.queueSessionSave();
         }
 
         function updateTorchVision() {
@@ -762,18 +784,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         const defaultPlayers = ['Guerreiro', 'Mago', 'Ladino', 'Clérigo'];
         let playerViewMode = false;
         let treasureIdCounter = 100;
-        let treasures = [
-            {id:1,name:'Bolsa de moedas antigas',map:'overworld',x:13,y:27,kind:'Moedas',description:'Moedas antigas marcadas com o corvo de Roderick.',hint:'Há terra recém-revolvida junto a uma árvore caída.',dc:12,hidden:true,revealedTo:[],collectedBy:[]},
-            {id:2,name:'Mapa incompleto',map:'overworld',x:17,y:31,kind:'Pista',description:'Um fragmento de mapa mostra uma trilha até o Cemitério Esquecido.',hint:'Um canto de pergaminho aparece entre pedras.',dc:11,hidden:true,revealedTo:[],collectedBy:[]},
-            {id:3,name:'Broche do Corvo',map:'overworld',x:8,y:8,kind:'Relíquia',description:'Um broche de prata com um corvo de asas fechadas. Pode abrir portas antigas.',hint:'O brasão do castelo parece encaixar numa fenda da pedra.',dc:14,hidden:true,revealedTo:[],collectedBy:[]},
-            {id:4,name:'Chave de osso',map:'dungeon',x:14,y:24,kind:'Chave',description:'Uma chave esculpida em osso, fria ao toque. Abre um compartimento funerário.',hint:'O reboco perto do chão está rachado e parece oco.',dc:12,hidden:true,revealedTo:[],collectedBy:[]},
-            {id:5,name:'Estojo funerário',map:'dungeon',x:37,y:24,kind:'Tesouro',description:'Três gemas pequenas e um selo funerário envelhecido.',hint:'Um dos sarcófagos tem marcas recentes na base.',dc:13,hidden:true,revealedTo:[],collectedBy:[]},
-            {id:6,name:'Frasco de luz âmbar',map:'dungeon',x:22,y:20,kind:'Consumível',description:'Uma luz dourada ilumina até 6 metros por 10 minutos e revela inscrições ocultas.',hint:'A fuligem forma um círculo limpo em torno de uma pedra.',dc:12,hidden:true,revealedTo:[],collectedBy:[]},
-            {id:7,name:'Diário do prisioneiro',map:'dungeon',x:12,y:24,kind:'Pista',description:'O diário descreve uma passagem falsa e cita o nome do terceiro herdeiro.',hint:'Há papel apodrecido preso atrás de uma pedra solta.',dc:11,hidden:true,revealedTo:[],collectedBy:[]},
-            {id:8,name:'Coração de Âmbar',map:'dungeon',x:28,y:4,kind:'Relíquia rara',description:'Relíquia do Altar do Pacto. Pode enfraquecer o vínculo com a névoa, mas exige uma escolha difícil.',hint:'O altar pulsa com uma luz dourada sob as marcas vermelhas.',dc:16,hidden:true,revealedTo:[],collectedBy:[]},
-            {id:9,name:'Fragmento do Contrato Original',map:'dungeon',x:30,y:6,kind:'Segredo',description:'Um fragmento prova que o pacto foi alterado por alguém da linhagem do Barão.',hint:'Uma inscrição fica visível apenas sob luz mágica ou após examinar o altar.',dc:15,hidden:true,revealedTo:[],collectedBy:[]},
-            {id:10,name:'Lanterna da Última Vigília',map:'dungeon',x:25,y:3,kind:'Relíquia rara',description:'Lanterna que, uma vez por descanso longo, ilumina rastros de criaturas invisíveis na névoa.',hint:'A chama de uma tocha não projeta sombra sobre um nicho estreito.',dc:15,hidden:true,revealedTo:[],collectedBy:[]}
-        ];
+        let treasures = []; // Conteúdo secreto carregado exclusivamente do Realtime Database.
         function getPlayers(){
             const fromTokens=tokens.filter(t=>t.type==='hero').map(t=>t.name).filter(Boolean);
             return [...new Set([...defaultPlayers,...fromTokens])];
@@ -829,21 +840,21 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             const player=document.getElementById('treasure-player-select').value || defaultPlayers[0];
             if(!t.revealedTo.includes(player))t.revealedTo.push(player);
             document.getElementById('treasure-status').textContent=`“${t.name}” revelado para ${player}.`;
-            renderTreasurePanel();drawMap();
+            renderTreasurePanel();drawMap();window.ValeCorvoSync?.saveTreasures(treasures);
         }
         function collectTreasure(id){
             const t=treasures.find(x=>x.id===id);if(!t)return;
             const player=document.getElementById('treasure-player-select').value || defaultPlayers[0];
             if(!t.collectedBy.includes(player))t.collectedBy.push(player);
             document.getElementById('treasure-status').textContent=`“${t.name}” marcado como coletado por ${player}.`;
-            renderTreasurePanel();drawMap();
+            renderTreasurePanel();drawMap();window.ValeCorvoSync?.saveTreasures(treasures);
         }
         function hideTreasure(id){
             const t=treasures.find(x=>x.id===id);if(!t)return;
             const player=document.getElementById('treasure-player-select').value || defaultPlayers[0];
             t.revealedTo=t.revealedTo.filter(n=>n!==player);
             renderTreasurePanel();drawMap();
-            document.getElementById('treasure-status').textContent=`A descoberta de “${t.name}” foi ocultada para ${player}.`;
+            document.getElementById('treasure-status').textContent=`A descoberta de “${t.name}” foi ocultada para ${player}.`;window.ValeCorvoSync?.saveTreasures(treasures);
         }
         function renderTreasurePanel(){
             const list=document.getElementById('treasure-list');if(!list)return;
@@ -865,13 +876,13 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             const y=Math.max(0,Math.min(GRID_ROWS-1,Math.floor(((canvas.height/2-offsetY)/scale)/tileSize)));
             treasures.push({id:++treasureIdCounter,name:name.trim(),map,x,y,kind:'Personalizado',description,hint,dc:12,hidden:true,revealedTo:[],collectedBy:[]});
             document.getElementById('treasure-status').textContent=`Tesouro “${name.trim()}” criado próximo ao centro da vista atual (${getColumnLetter(x)}${y+1}).`;
-            renderTreasurePanel();drawMap();
+            renderTreasurePanel();drawMap();window.ValeCorvoSync?.saveTreasures(treasures);
         }
         function resetTreasureReveals(){
             if(!confirm('Apagar todas as descobertas e marcações de coleta?'))return;
             treasures.forEach(t=>{t.revealedTo=[];t.collectedBy=[];});
             document.getElementById('treasure-status').textContent='Todas as revelações e coletas foram resetadas.';
-            renderTreasurePanel();drawMap();
+            renderTreasurePanel();drawMap();window.ValeCorvoSync?.saveTreasures(treasures);
         }
 
         function drawMap() {
@@ -892,6 +903,8 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
 
             // Draw Tokens
             tokens.forEach(token => {
+                if (token.map && token.map !== currentMapMode) return;
+                if (window.firebaseRole === 'player' && token.type === 'hero' && token.name !== window.firebaseCharacterName) return;
                 // In dungeon mode, only draw tokens if cell is revealed or GM is viewing
                 const isRevealed = (currentMapMode === 'overworld') || (dungeonFog[token.x] && dungeonFog[token.x][token.y] === 1);
                 
@@ -1135,7 +1148,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             }
 
             // Dungeon Decorative Elements (Torches, Sarcophagi, Ritual Circles)
-            // Altar do Pacto no salão final da cripta (câmara superior), longe da entrada.
+            // Elemento decorativo do salão final da cripta, longe da entrada.
             const rcX = 28 * tileSize + tileSize / 2;
             const rcY = 4 * tileSize + tileSize / 2;
             ctx.beginPath();
@@ -1223,6 +1236,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 const maxY = Math.max(minY, room.y2 - 1);
                 hero.x = minX + Math.floor(Math.random() * (maxX - minX + 1));
                 hero.y = minY + Math.floor(Math.random() * (maxY - minY + 1));
+                hero.map = 'dungeon';
             });
             // Reinicia a névoa e revela apenas o entorno de cada herói.
             initDungeonFog(0);
@@ -1251,6 +1265,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                     moveBtn.innerHTML = '<i class="fa-solid fa-location-dot"></i> <span class="hidden sm:inline">Mover Cripta</span>';
                 }
                 drawMap();
+                window.ValeCorvoSync?.queueSessionSave();
                 return;
             }
 
@@ -1260,7 +1275,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 applyFogBrush(gridX, gridY, 0);
             } else if (currentTool === 'token') {
                 const clickedToken = tokens.find(t => t.x === gridX && t.y === gridY);
-                if (clickedToken) {
+                if (clickedToken && window.ValeCorvoApp?.canMoveToken(clickedToken)) {
                     draggedTokenId = clickedToken.id;
                 }
             }
@@ -1312,6 +1327,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                             tokens.filter(t => t.type === 'hero').forEach((t, i) => {
                                 t.x = Math.min(GRID_COLS - 1, cryptEntrance.x + (i % 2));
                                 t.y = Math.min(GRID_ROWS - 1, cryptEntrance.y + Math.floor(i / 2));
+                                t.map = 'overworld';
                             });
                             switchMapMode('overworld');
                         }
@@ -1323,6 +1339,14 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         });
 
         window.addEventListener('mouseup', () => {
+            if (draggedTokenId !== null) {
+                const moved = tokens.find(t => t.id === draggedTokenId);
+                if (moved) {
+                    moved.map = currentMapMode;
+                    window.ValeCorvoSync?.saveTokenPosition(moved);
+                    window.ValeCorvoSync?.saveExploration();
+                }
+            }
             isDragging = false;
             draggedTokenId = null;
         });
@@ -1380,11 +1404,13 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 name: name,
                 color: color,
                 x: centerX + Math.floor(Math.random() * 3) - 1,
-                y: centerY + Math.floor(Math.random() * 3) - 1
+                y: centerY + Math.floor(Math.random() * 3) - 1,
+                map: currentMapMode
             };
             tokens.push(newToken);
             populatePlayerSelects();
             drawMap();
+            window.ValeCorvoSync?.queueSessionSave();
         }
 
         function selectTokenType(e, type, name, color) {
@@ -1411,16 +1437,20 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                     name,
                     color,
                     x: gridX,
-                    y: gridY
+                    y: gridY,
+                    map: currentMapMode
                 });
                 populatePlayerSelects();
                 drawMap();
+                window.ValeCorvoSync?.queueSessionSave();
             }
         });
 
         function clearAllTokens() {
+            if (window.firebaseRole === 'player') return;
             tokens = [];
             drawMap();
+            window.ValeCorvoSync?.queueSessionSave();
         }
 
         function focusPoi(poiId) {
@@ -1551,6 +1581,67 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             resetView();
         });
 
+
+        // Bridge controlado para sincronização Firebase; as variáveis do mapa continuam privadas neste script.
+        window.ValeCorvoApp = {
+            getState() {
+                return {
+                    tokens: tokens.map(t => ({...t})),
+                    dungeonFog: dungeonFog.map(col => [...col]),
+                    mapMode: currentMapMode,
+                    cryptEntrance: {...cryptEntrance},
+                    visionRadius,
+                    magicVisionEnabled
+                };
+            },
+            applyState(state) {
+                if (!state || typeof state !== 'object') return;
+                if (Array.isArray(state.tokens)) tokens = state.tokens.map(t => ({...t}));
+                if (Array.isArray(state.dungeonFog) && state.dungeonFog.length === GRID_COLS) dungeonFog = state.dungeonFog.map(col => [...col]);
+                if (state.mapMode === 'overworld' || state.mapMode === 'dungeon') currentMapMode = state.mapMode;
+                if (state.cryptEntrance && Number.isInteger(state.cryptEntrance.x) && Number.isInteger(state.cryptEntrance.y)) cryptEntrance = {...state.cryptEntrance};
+                if (Number.isInteger(state.visionRadius)) visionRadius = Math.max(2, Math.min(12, state.visionRadius));
+                if (typeof state.magicVisionEnabled === 'boolean') magicVisionEnabled = state.magicVisionEnabled;
+                const radiusInput = document.getElementById('vision-radius');
+                if (radiusInput) radiusInput.value = String(visionRadius);
+                const radiusLabel = document.getElementById('vision-radius-label');
+                if (radiusLabel) radiusLabel.textContent = `${visionRadius}q`;
+                drawMap();
+            },
+            applyPlayerDocs(docs) {
+                docs.forEach(p => {
+                    if (!p || typeof p.characterName !== 'string') return;
+                    const token = tokens.find(t => t.type === 'hero' && t.name === p.characterName);
+                    if (token && Number.isInteger(p.x) && Number.isInteger(p.y)) {
+                        token.x = Math.max(0, Math.min(GRID_COLS - 1, p.x));
+                        token.y = Math.max(0, Math.min(GRID_ROWS - 1, p.y));
+                        token.map = p.map === 'dungeon' ? 'dungeon' : 'overworld';
+                    }
+                });
+                drawMap();
+            },
+            applyOwnPlayerDoc(p) {
+                if (!p || typeof p.characterName !== 'string') return;
+                window.firebaseCharacterName = p.characterName;
+                const token = tokens.find(t => t.type === 'hero' && t.name === p.characterName);
+                if (token && Number.isInteger(p.x) && Number.isInteger(p.y)) {
+                    token.x = Math.max(0, Math.min(GRID_COLS - 1, p.x));
+                    token.y = Math.max(0, Math.min(GRID_ROWS - 1, p.y));
+                    token.map = p.map === 'dungeon' ? 'dungeon' : 'overworld';
+                }
+                drawMap();
+            },
+            setTreasures(items) {
+                treasures = Array.isArray(items) ? items.map(t => ({...t})) : [];
+                treasureIdCounter = Math.max(100, ...treasures.map(t => Number(t.id) || 0));
+                renderTreasurePanel();
+                drawMap();
+            },
+            canMoveToken(token) {
+                return window.firebaseRole !== 'player' || (token?.type === 'hero' && token.name === window.firebaseCharacterName);
+            }
+        };
+
         window.onload = function() {
             populatePlayerSelects();
             resizeCanvas();
@@ -1558,5 +1649,9 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             renderTreasurePanel();
         };
     </script>
+
+    <script type="module" src="./firebase-auth.js"></script>
+    <script type="module" src="./firebase-sync.js"></script>
+
 </body>
 </html>
