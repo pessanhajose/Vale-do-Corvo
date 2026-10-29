@@ -1,7 +1,7 @@
 import { auth, db } from "./firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  collection, doc, getDoc, onSnapshot, query, serverTimestamp, setDoc
+  collection, doc, getDoc, onSnapshot, serverTimestamp, setDoc
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const stateRef = doc(db, "sessions", "main");
@@ -31,7 +31,7 @@ function stateForFirestore() {
   if (!state) return null;
   return {
     tokens: state.tokens,
-    dungeonFog: state.dungeonFog,
+    dungeonFog: state.dungeonFog.flat(),
     mapMode: state.mapMode,
     cryptEntrance: state.cryptEntrance,
     visionRadius: state.visionRadius,
@@ -82,7 +82,7 @@ async function saveExploration() {
   if (!state?.dungeonFog) return;
   await setDoc(doc(db, "exploration", activeUser.uid), {
     uid: activeUser.uid,
-    dungeonFog: state.dungeonFog,
+    dungeonFog: state.dungeonFog.flat(),
     mapMode: state.mapMode,
     updatedAt: serverTimestamp()
   }, { merge: true });
@@ -122,8 +122,12 @@ onAuthStateChanged(auth, async user => {
   if (role === "master") {
     unsubscribers.push(onSnapshot(stateRef, snap => {
       if (snap.exists()) {
+        const remote = { ...snap.data() };
+        if (Array.isArray(remote.dungeonFog) && remote.dungeonFog.length === 50 * 40 && !Array.isArray(remote.dungeonFog[0])) {
+          remote.dungeonFog = Array.from({ length: 50 }, (_, x) => remote.dungeonFog.slice(x * 40, (x + 1) * 40));
+        }
         applyingRemoteState = true;
-        try { window.ValeCorvoApp?.applyState?.(snap.data()); }
+        try { window.ValeCorvoApp?.applyState?.(remote); }
         finally { applyingRemoteState = false; }
       } else {
         queueSessionSave();
@@ -148,12 +152,18 @@ onAuthStateChanged(auth, async user => {
 
   unsubscribers.push(onSnapshot(doc(db, "exploration", user.uid), snap => {
     const data = snap.data();
-    if (data?.dungeonFog) {
-      applyingRemoteState = true;
-      try {
-        const current = window.ValeCorvoApp?.getState?.();
-        if (current) window.ValeCorvoApp.applyState({ ...current, dungeonFog: data.dungeonFog });
-      } finally { applyingRemoteState = false; }
+    if (Array.isArray(data?.dungeonFog)) {
+      let grid = data.dungeonFog;
+      if (grid.length === 50 * 40 && !Array.isArray(grid[0])) {
+        grid = Array.from({ length: 50 }, (_, x) => grid.slice(x * 40, (x + 1) * 40));
+      }
+      if (Array.isArray(grid[0])) {
+        applyingRemoteState = true;
+        try {
+          const current = window.ValeCorvoApp?.getState?.();
+          if (current) window.ValeCorvoApp.applyState({ ...current, dungeonFog: grid });
+        } finally { applyingRemoteState = false; }
+      }
     }
   }, showSyncError));
 });
