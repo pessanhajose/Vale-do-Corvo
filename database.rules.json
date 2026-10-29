@@ -91,6 +91,14 @@
         ".read": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)",
         ".write": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)"
       }
+    },
+    "presence": {
+      ".read": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)",
+        ".write": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)",
+        ".validate": "!newData.exists() || (newData.hasChildren(['uid','active']) && newData.child('uid').val() === $uid && newData.child('active').isBoolean())"
+      }
     }
   }
 }
