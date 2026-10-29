@@ -116,53 +116,23 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
 
 </head>
 <body class="h-screen flex flex-col bg-gothic-950 text-gray-100 overflow-hidden">
-    <!-- Firebase Authentication Gate: a versão de jogador só será liberada após remover segredos do código público. -->
+    <!-- Entrada simplificada: nome, personagem e papel -->
     <div id="auth-gate">
-        <section id="firebase-login-card" class="w-full max-w-md rounded-2xl border border-corvo-gold bg-gothic-900 p-6 shadow-2xl">
-            <div class="text-center mb-5">
-                <div class="text-corvo-gold text-3xl mb-2"><i class="fa-solid fa-crow"></i></div>
-                <h2 class="font-gothic text-xl text-corvo-gold font-bold">Vale-Corvo</h2>
-                <p class="text-sm text-gray-400 mt-1">Entre para acessar o painel do mestre</p>
-            </div>
+        <section class="w-full max-w-md rounded-2xl border border-corvo-gold bg-gothic-900 p-6 shadow-2xl">
+            <div class="text-center mb-5"><div class="text-corvo-gold text-3xl mb-2"><i class="fa-solid fa-crow"></i></div><h2 class="font-gothic text-xl text-corvo-gold font-bold">Vale-Corvo</h2><p class="text-sm text-gray-400 mt-1">Entre na campanha</p></div>
             <form id="firebase-auth-form" class="space-y-3">
-                <div id="firebase-name-wrap" class="hidden">
-                    <label class="block text-xs text-gray-300 mb-1" for="firebase-display-name">Nome de exibição</label>
-                    <input id="firebase-display-name" type="text" maxlength="60" autocomplete="nickname" placeholder="Nome do mestre ou jogador">
-                </div>
-                <div id="firebase-character-wrap" class="hidden">
-                    <label class="block text-xs text-gray-300 mb-1" for="firebase-character-name">Personagem</label>
-                    <select id="firebase-character-name" class="w-full bg-gothic-950 border border-gothic-600 rounded-lg p-2 text-gray-100">
-                        <option value="Guerreiro">Guerreiro</option>
-                        <option value="Mago">Mago</option>
-                        <option value="Ladino">Ladino</option>
-                        <option value="Clérigo">Clérigo</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs text-gray-300 mb-1" for="firebase-email">E-mail</label>
-                    <input id="firebase-email" type="email" autocomplete="email" required placeholder="voce@exemplo.com">
-                </div>
-                <div>
-                    <label class="block text-xs text-gray-300 mb-1" for="firebase-password">Senha</label>
-                    <input id="firebase-password" type="password" minlength="6" autocomplete="current-password" required placeholder="Mínimo de 6 caracteres">
-                </div>
+                <div><label class="block text-xs text-gray-300 mb-1" for="firebase-display-name">Seu nome</label><input id="firebase-display-name" type="text" maxlength="60" autocomplete="nickname" required placeholder="Nome de exibição"></div>
+                <div id="firebase-character-wrap"><label class="block text-xs text-gray-300 mb-1" for="firebase-character-name">Personagem</label><select id="firebase-character-name" class="w-full bg-gothic-950 border border-gothic-600 rounded-lg p-2 text-gray-100"><option value="Guerreiro">Guerreiro</option><option value="Mago">Mago</option><option value="Ladino">Ladino</option><option value="Clérigo">Clérigo</option></select></div>
+                <div><label class="block text-xs text-gray-300 mb-1" for="firebase-role">Entrar como</label><select id="firebase-role" class="w-full bg-gothic-950 border border-gothic-600 rounded-lg p-2 text-gray-100"><option value="player">Jogador</option><option value="master">Mestre</option></select></div>
+                <div id="firebase-master-password-wrap" class="hidden"><label class="block text-xs text-gray-300 mb-1" for="firebase-master-password">Senha do mestre</label><input id="firebase-master-password" type="password" autocomplete="off" placeholder="Senha do mestre"></div>
                 <button id="firebase-auth-submit" type="submit" class="w-full rounded-lg border border-corvo-gold bg-blood-800 hover:bg-blood-700 py-2.5 font-gothic font-bold text-corvo-gold">Entrar</button>
             </form>
-            <button id="firebase-auth-mode" type="button" class="w-full mt-3 text-sm text-gray-300 underline hover:text-corvo-gold">Criar uma conta</button>
             <p id="firebase-auth-message" class="text-sm text-emerald-300 mt-3" role="status" aria-live="polite"></p>
-            <p class="text-[11px] text-gray-500 mt-4">As novas contas recebem acesso de jogador. O papel de mestre deve ser atribuído manualmente no Console do Firebase.</p>
-        </section>
-        <section id="firebase-player-not-ready" class="hidden w-full max-w-md rounded-2xl border border-amber-700 bg-gothic-900 p-6 shadow-2xl">
-            <h2 class="font-gothic text-xl text-amber-200 font-bold">Conta de jogador criada</h2>
-            <p class="text-sm text-gray-300 mt-3">O acesso ao mapa dos jogadores ainda está bloqueado nesta etapa. Precisamos primeiro mover as notas do mestre e os segredos para dados protegidos do Realtime Database. Isso evita que informações secretas fiquem disponíveis no código público do site.</p>
-            <button id="firebase-logout" type="button" class="mt-5 rounded-lg border border-gothic-600 bg-gothic-800 px-4 py-2 text-sm hover:bg-gothic-700">Sair da conta</button>
+            <div id="firebase-master-device-help" class="hidden text-xs text-amber-200 mt-3 break-words">Este dispositivo precisa ser autorizado no Firebase. Crie <code>masters/UID_DO_DISPOSITIVO = true</code> em Realtime Database → Dados.<p id="firebase-device-uid" class="mt-2 select-text"></p></div>
+            <p class="text-[11px] text-gray-500 mt-4">A senha do mestre fica no código público e serve apenas como trava visual.</p>
         </section>
     </div>
-    <div id="firebase-user-bar" class="hidden fixed bottom-3 left-3 z-50 items-center gap-3 rounded-lg border border-gothic-600 bg-gothic-900/95 px-3 py-2 shadow-xl">
-        <span id="firebase-user-label" class="text-xs text-gray-200"></span>
-        <button id="firebase-logout-master" type="button" class="rounded border border-gothic-600 px-2 py-1 text-xs hover:bg-gothic-700">Sair</button>
-    </div>
-
+    <div id="firebase-user-bar" class="hidden fixed bottom-3 left-3 z-50 items-center gap-3 rounded-lg border border-gothic-600 bg-gothic-900/95 px-3 py-2 shadow-xl"><span id="firebase-user-label" class="text-xs text-gray-200"></span><button id="firebase-logout-master" type="button" class="rounded border border-gothic-600 px-2 py-1 text-xs hover:bg-gothic-700">Sair</button></div>
 
     <!-- Top Navigation / Toolbar -->
     <header class="bg-gothic-900 border-b border-gothic-700 px-4 py-3 flex flex-wrap items-center justify-between z-30 shadow-lg">
