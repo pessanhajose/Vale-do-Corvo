@@ -22,6 +22,7 @@ const message = document.getElementById("firebase-auth-message");
 const submitButton = document.getElementById("firebase-auth-submit");
 const modeButton = document.getElementById("firebase-auth-mode");
 const logoutButton = document.getElementById("firebase-logout");
+const logoutMasterButton = document.getElementById("firebase-logout-master");
 const userBar = document.getElementById("firebase-user-bar");
 const userLabel = document.getElementById("firebase-user-label");
 let mode = "login";
@@ -138,9 +139,15 @@ async function enterWithUser(user) {
     document.getElementById("firebase-player-not-ready").classList.remove("hidden");
   }
 }
-logoutButton.addEventListener("click", async () => {
-  try { await signOut(auth); } catch (error) { setMessage(error.message, true); }
-});
+async function handleLogout() {
+  try {
+    await signOut(auth);
+  } catch (error) {
+    setMessage("Não foi possível sair da conta: " + (error.message || "erro desconhecido"), true);
+  }
+}
+logoutButton?.addEventListener("click", handleLogout);
+logoutMasterButton?.addEventListener("click", handleLogout);
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     window.firebaseUser = null;
