@@ -1579,12 +1579,15 @@ body.player-view #mist-overlay {display:none!important}
             ensurePlayerToken(p) {
                 if (!p || typeof p.characterName !== 'string') return null;
                 const colors = { 'Guerreiro': '#3b82f6', 'Mago': '#8b5cf6', 'Ladino': '#10b981', 'Clérigo': '#eab308' };
-                let token = tokens.find(t => t.type === 'hero' && t.name === p.characterName);
+                // Cada conta tem um token próprio; não reutilize outro jogador só porque escolheu a mesma classe.
+                const playerTokenId = 'player-' + String(p.uid || p.characterName);
+                let token = tokens.find(t => t.type === 'hero' && t.id === playerTokenId);
                 if (!token) {
-                    token = { id: 'player-' + String(p.uid || p.characterName), type: 'hero', name: p.characterName,
+                    token = { id: playerTokenId, type: 'hero', name: p.characterName,
                         color: colors[p.characterName] || '#94a3b8', x: 21, y: 13, icon: 'fa-user', map: 'overworld' };
                     tokens.push(token);
                 }
+                token.name = p.characterName;
                 if (Number.isInteger(p.x) && Number.isInteger(p.y)) {
                     token.x = Math.max(0, Math.min(GRID_COLS - 1, p.x));
                     token.y = Math.max(0, Math.min(GRID_ROWS - 1, p.y));
