@@ -2,7 +2,8 @@
 <html lang="pt-BR" class="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#090a0f">
     <title>Vale-Corvo: Anamap1</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -116,6 +117,34 @@ body.player-view #mist-overlay {display:none!important}
 #firebase-user-bar{max-width:calc(100vw - 1.5rem)}
 </style>
 
+<style>
+/* ===== Uso no celular ===== */
+#map-container{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none}
+.mobile-only{display:none}
+#firebase-auth-form input,#firebase-auth-form select{font-size:16px}
+@media (max-width:800px){
+  body{height:100vh;height:100dvh}
+  header{padding:.4rem .5rem!important;gap:.3rem}
+  header>div{width:100%}
+  header>div:first-child{gap:.5rem}
+  header>div:first-child>div:first-child{width:1.8rem!important;height:1.8rem!important;font-size:1rem!important}
+  header h1{font-size:1rem!important} header h1 span,header>div:first-child p{display:none!important}
+  header>div:nth-child(n+2){overflow-x:auto;flex-wrap:nowrap!important;margin:0!important;padding-bottom:3px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  header>div:nth-child(n+2)::-webkit-scrollbar{display:none}
+  header>div:nth-child(n+2)>*{flex-shrink:0}
+  header button{min-height:2.25rem}
+  #sidebar{position:absolute!important;top:0;right:0;bottom:0;width:92vw!important;max-width:26rem}
+  .mobile-only{display:flex}
+  #dungeon-quick-controls{top:.4rem!important;right:.4rem!important;left:.4rem!important;flex-wrap:wrap;gap:.35rem}
+  #dungeon-quick-controls>span.font-gothic{display:none}
+  #scale-bar{display:none!important}
+  #hover-info{top:auto!important;left:.5rem!important;bottom:3.2rem!important}
+  #firebase-user-bar{left:.5rem!important;bottom:.5rem!important}
+  #token-tray{right:.4rem!important;bottom:.4rem!important;padding:.4rem!important;max-width:58vw}
+  #treasure-panel{max-height:calc(100vh - 8rem);max-height:calc(100dvh - 8rem);top:auto!important;bottom:.5rem}
+  .treasure-card select,.treasure-card input{font-size:16px}
+}
+</style>
 </head>
 <body class="h-screen flex flex-col bg-gothic-950 text-gray-100 overflow-hidden">
     <!-- Entrada simplificada: nome, personagem e papel -->
@@ -257,7 +286,7 @@ body.player-view #mist-overlay {display:none!important}
             </div>
 
             <!-- Scale Bar Overlay -->
-            <div class="absolute bottom-4 left-4 bg-gothic-900/90 border border-gothic-700 px-3 py-2 rounded-lg text-xs backdrop-blur-md shadow-xl flex items-center space-x-3 z-10">
+            <div id="scale-bar" class="absolute bottom-4 left-4 bg-gothic-900/90 border border-gothic-700 px-3 py-2 rounded-lg text-xs backdrop-blur-md shadow-xl flex items-center space-x-3 z-10">
                 <div class="flex items-center space-x-1">
                     <span class="font-gothic text-corvo-gold font-bold">Escala:</span>
                     <span>1 Quadrado = 1.5m (5 pés)</span>
@@ -314,6 +343,7 @@ body.player-view #mist-overlay {display:none!important}
 
         <!-- Sidebar / Lore & DM Panel -->
         <div id="sidebar" class="w-full sm:w-96 bg-gothic-900 border-l border-gothic-700 flex flex-col z-20 shadow-2xl transition-all duration-300 translate-x-0">
+            <div class="mobile-only justify-end p-1 border-b border-gothic-700 bg-gothic-950"><button onclick="toggleSidebar()" class="px-3 py-1.5 text-xs text-gray-200 border border-gothic-600 rounded bg-gothic-800">✕ Fechar</button></div>
             <!-- Sidebar Header Tabs -->
             <div class="flex border-b border-gothic-700 bg-gothic-950">
                 <button onclick="switchTab('pois')" id="tab-btn-pois" class="flex-1 py-3 px-3 text-xs font-gothic font-bold text-corvo-gold border-b-2 border-corvo-gold bg-gothic-900 transition flex items-center justify-center gap-1.5">
@@ -1368,7 +1398,7 @@ body.player-view #mist-overlay {display:none!important}
         }
 
         // Mouse Interactions for Pan, Tokens, and Fog Painting
-        container.addEventListener('mousedown', (e) => {
+        function onMapPointerDown(e, isTouch) {
             isDragging = true;
             startX = e.clientX - offsetX;
             startY = e.clientY - offsetY;
@@ -1396,15 +1426,25 @@ body.player-view #mist-overlay {display:none!important}
                 applyFogBrush(gridX, gridY, 1);
             } else if (currentTool === 'hide' && currentMapMode === 'dungeon') {
                 applyFogBrush(gridX, gridY, 0);
-            } else if (currentTool === 'token') {
-                const clickedToken = tokens.find(t => t.x === gridX && t.y === gridY);
+            } else if (currentTool === 'token' || window.firebaseRole === 'player') {
+                // Jogador pode arrastar o próprio token sem trocar de ferramenta (útil no celular).
+                let clickedToken = tokens.find(t => t.x === gridX && t.y === gridY);
+                if (!clickedToken && isTouch) {
+                    // Dedo é impreciso: aceita o token movível mais próximo (até ~1 quadrado de distância).
+                    const fx = mouseX / tileSize, fy = mouseY / tileSize;
+                    clickedToken = tokens
+                        .filter(t => window.ValeCorvoApp?.canMoveToken(t))
+                        .map(t => ({ t, d: Math.hypot(t.x + 0.5 - fx, t.y + 0.5 - fy) }))
+                        .filter(o => o.d <= 1.3)
+                        .sort((a, b) => a.d - b.d)[0]?.t;
+                }
                 if (clickedToken && window.ValeCorvoApp?.canMoveToken(clickedToken)) {
                     draggedTokenId = clickedToken.id;
                 }
             }
-        });
+        }
 
-        container.addEventListener('mousemove', (e) => {
+        function onMapPointerMove(e) {
             const rect = canvas.getBoundingClientRect();
             const mouseX = (e.clientX - rect.left - offsetX) / scale;
             const mouseY = (e.clientY - rect.top - offsetY) / scale;
@@ -1425,11 +1465,11 @@ body.player-view #mist-overlay {display:none!important}
                 applyFogBrush(gridX, gridY, 1);
             } else if (currentTool === 'hide' && currentMapMode === 'dungeon') {
                 applyFogBrush(gridX, gridY, 0);
-            } else if (currentTool === 'pan' || !draggedTokenId) {
+            } else if (draggedTokenId === null) {
                 offsetX = e.clientX - startX;
                 offsetY = e.clientY - startY;
                 drawMap();
-            } else if (currentTool === 'token' && draggedTokenId !== null) {
+            } else {
                 if (gridX >= 0 && gridX < GRID_COLS && gridY >= 0 && gridY < GRID_ROWS) {
                     const token = tokens.find(t => t.id === draggedTokenId);
                     if (token) {
@@ -1459,9 +1499,9 @@ body.player-view #mist-overlay {display:none!important}
                     }
                 }
             }
-        });
+        }
 
-        window.addEventListener('mouseup', () => {
+        function onMapPointerUp() {
             if (draggedTokenId !== null) {
                 const moved = tokens.find(t => t.id === draggedTokenId);
                 if (moved) {
@@ -1472,7 +1512,49 @@ body.player-view #mist-overlay {display:none!important}
             }
             isDragging = false;
             draggedTokenId = null;
+        }
+
+        // Ponteiros unificados: mouse, toque e caneta. Dois dedos = pinça (zoom) e arrasto do mapa.
+        const mapPointers = new Map();
+        let pinchState = null;
+        const MAP_UI_SELECTOR = 'button,select,input,label,summary,details,a,#token-tray,#dungeon-quick-controls,#treasure-panel,#sidebar,#firebase-user-bar';
+        function pinchMetrics() {
+            const [a, b] = [...mapPointers.values()];
+            return { dist: Math.hypot(a.x - b.x, a.y - b.y) || 1, cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2 };
+        }
+        container.addEventListener('pointerdown', (e) => {
+            if (e.pointerType === 'mouse' && e.button !== 0) return;
+            if (e.target.closest(MAP_UI_SELECTOR)) return;
+            mapPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            try { container.setPointerCapture(e.pointerId); } catch (_) {}
+            if (mapPointers.size === 2) { onMapPointerUp(); pinchState = pinchMetrics(); return; }
+            if (mapPointers.size > 2) return;
+            onMapPointerDown(e, e.pointerType !== 'mouse');
         });
+        container.addEventListener('pointermove', (e) => {
+            if (mapPointers.has(e.pointerId)) mapPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (pinchState && mapPointers.size >= 2) {
+                const m = pinchMetrics(), rect = canvas.getBoundingClientRect(), oldScale = scale;
+                scale = Math.min(3, Math.max(0.15, scale * m.dist / pinchState.dist));
+                const px = pinchState.cx - rect.left, py = pinchState.cy - rect.top;
+                offsetX = px - (px - offsetX) * (scale / oldScale) + (m.cx - pinchState.cx);
+                offsetY = py - (py - offsetY) * (scale / oldScale) + (m.cy - pinchState.cy);
+                pinchState = m;
+                drawMap();
+                return;
+            }
+            if (mapPointers.size > 1) return;
+            if (e.pointerType !== 'mouse' && !mapPointers.has(e.pointerId)) return;
+            onMapPointerMove(e);
+        });
+        const endMapPointer = (e) => {
+            if (!mapPointers.has(e.pointerId)) return;
+            mapPointers.delete(e.pointerId);
+            if (pinchState) { if (mapPointers.size < 2) pinchState = null; return; }
+            if (mapPointers.size === 0) onMapPointerUp();
+        };
+        container.addEventListener('pointerup', endMapPointer);
+        container.addEventListener('pointercancel', endMapPointer);
 
         // No modo Jogadores, clicar num marcador descoberto abre apenas a ficha pública do tesouro.
         container.addEventListener('click', (e) => {
@@ -1501,7 +1583,7 @@ body.player-view #mist-overlay {display:none!important}
             if (e.deltaY < 0) {
                 scale = Math.min(scale * zoomFactor, 3);
             } else {
-                scale = Math.max(scale / zoomFactor, 0.4);
+                scale = Math.max(scale / zoomFactor, 0.15);
             }
 
             offsetX = mouseX - (mouseX - offsetX) * (scale / oldScale);
@@ -1624,6 +1706,10 @@ body.player-view #mist-overlay {display:none!important}
             document.getElementById('dice-result').innerText = `Rolagem (d${sides}): ${roll}`;
         }
 
+        if (window.matchMedia && window.matchMedia('(max-width:800px)').matches) {
+            const sb0 = document.getElementById('sidebar');
+            sb0.classList.add('translate-x-full', 'hidden');
+        }
         function toggleSidebar() {
             const sb = document.getElementById('sidebar');
             sb.classList.toggle('translate-x-full');
@@ -1648,7 +1734,7 @@ body.player-view #mist-overlay {display:none!important}
                 canvas.width / mapWidth,
                 canvas.height / mapHeight
             );
-            scale = Math.max(0.4, scale);
+            scale = Math.max(0.15, scale);
 
             offsetX = (canvas.width - mapWidth * scale) / 2;
             offsetY = (canvas.height - mapHeight * scale) / 2;
@@ -1667,7 +1753,7 @@ body.player-view #mist-overlay {display:none!important}
             const centerX = canvas.width / 2;
             const centerY = canvas.height / 2;
             const oldScale = scale;
-            scale = Math.max(0.4, Math.min(3, scale * factor));
+            scale = Math.max(0.15, Math.min(3, scale * factor));
             offsetX = centerX - (centerX - offsetX) * (scale / oldScale);
             offsetY = centerY - (centerY - offsetY) * (scale / oldScale);
             drawMap();
@@ -1701,10 +1787,11 @@ body.player-view #mist-overlay {display:none!important}
             }
         }
 
-        window.addEventListener('resize', () => {
-            resizeCanvas();
-            resetView();
-        });
+        // Redimensiona o canvas sem perder zoom/posição (a barra do navegador e o teclado do celular
+        // disparam resize o tempo todo). Só girar o aparelho reenquadra o mapa.
+        if (window.ResizeObserver) new ResizeObserver(() => resizeCanvas()).observe(container);
+        else window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('orientationchange', () => setTimeout(() => { resizeCanvas(); resetView(); }, 300));
 
 
         // Bridge controlado para sincronização Firebase; as variáveis do mapa continuam privadas neste script.
