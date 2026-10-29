@@ -5,7 +5,7 @@ import { getAuth } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-aut
 import { getDatabase } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAhC9aq4-6eh37sRy7ME8bWhF7e1gTwMBI",
+  apiKey: "AIzaSyAh9Caq4-6eh37sRy7ME8bWhF7e1gTwMBI",
   authDomain: "vale-do-corvo.firebaseapp.com",
   databaseURL: "https://vale-do-corvo-default-rtdb.firebaseio.com",
   projectId: "vale-do-corvo",
