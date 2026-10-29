@@ -138,6 +138,12 @@ async function enterWithUser(user) {
     document.getElementById("firebase-login-card").classList.add("hidden");
     document.getElementById("firebase-player-not-ready").classList.add("hidden");
     document.body.classList.add("firebase-player");
+    if (!document.getElementById("firebase-player-ui-style")) {
+      const style = document.createElement("style");
+      style.id = "firebase-player-ui-style";
+      style.textContent = "body.firebase-player #btn-view-mode{display:none!important}";
+      document.head.appendChild(style);
+    }
     const viewButton = document.getElementById("btn-view-mode");
     if (viewButton && !document.body.classList.contains("player-view")) viewButton.click();
     setMessage("");
