@@ -1,7 +1,7 @@
 import { auth, db } from "./firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  ref, get, set, onValue, serverTimestamp
+  ref, get, set, onValue, onDisconnect, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
 let activeUser = null;
@@ -118,6 +118,11 @@ onAuthStateChanged(auth, async user => {
     return;
   }
 
+  // Presença: jogadores só contam como ativos enquanto a conexão estiver viva.
+  const presenceRef = ref(db, `presence/${user.uid}`);
+  await onDisconnect(presenceRef).remove();
+  await set(presenceRef, { active: true, uid: user.uid, updatedAt: serverTimestamp() });
+
   // A sessão do mestre é compartilhada com todas as contas autenticadas.
   // Este modo prioriza simplicidade e confiança entre jogadores: a geometria e os dados enviados ao navegador são públicos.
   unsubscribers.push(onValue(ref(db, "sessions/main"), snap => {
@@ -135,11 +140,17 @@ onAuthStateChanged(auth, async user => {
   }, showSyncError));
 
   if (role === "master") {
-    unsubscribers.push(onValue(ref(db, "players"), snap => {
-      const values = snap.val() || {};
-      playerDocs = new Map(Object.entries(values));
-      window.ValeCorvoApp?.applyPlayerDocs?.(Object.values(values));
-      queueSessionSave();
+    unsubscribers.push(onValue(ref(db, "presence"), presenceSnap => {
+      const active = presenceSnap.val() || {};
+      get(ref(db, "players")).then(playersSnap => {
+        const values = playersSnap.val() || {};
+        const activePlayers = Object.entries(values)
+          .filter(([uid]) => active[uid]?.active === true)
+          .map(([uid, data]) => ({ ...data, uid }));
+        playerDocs = new Map(activePlayers.map(p => [p.uid, p]));
+        window.ValeCorvoApp?.applyPlayerDocs?.(activePlayers);
+        queueSessionSave();
+      }).catch(showSyncError);
     }, showSyncError));
   } else {
     unsubscribers.push(onValue(ref(db, `players/${user.uid}`), snap => {
