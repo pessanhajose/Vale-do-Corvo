@@ -1037,8 +1037,8 @@ body.player-view #mist-overlay {display:none!important}
             // Draw Tokens
             tokens.forEach(token => {
                 if (token.map && token.map !== currentMapMode) return;
-                // Cada jogador vê somente o próprio token. O mestre vê todos os jogadores ativos.
-                if (window.firebaseRole === 'player' && token.type === 'hero' && token.name !== window.firebaseCharacterName) return;
+                // Todos os jogadores veem os heróis conectados; o UID diferencia contas
+                // mesmo quando duas pessoas escolhem a mesma classe. Só o dono pode movê-los.
                 // In dungeon mode, only draw tokens if cell is revealed or GM is viewing
                 const isRevealed = (currentMapMode === 'overworld') || (dungeonFog[token.x] && dungeonFog[token.x][token.y] === 1);
                 
@@ -1893,7 +1893,10 @@ body.player-view #mist-overlay {display:none!important}
                 drawMap();
             },
             canMoveToken(token) {
-                return window.firebaseRole !== 'player' || (token?.type === 'hero' && token.name === window.firebaseCharacterName);
+                if (window.firebaseRole !== 'player') return true;
+                // Jogador só pode arrastar o token associado à própria conta Firebase.
+                return token?.type === 'hero' &&
+                    heroUid(token) === window.firebaseUser?.uid;
             }
         };
 
