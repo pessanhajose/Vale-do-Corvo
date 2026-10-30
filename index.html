@@ -102,7 +102,7 @@
 body.firebase-player #player-view-controls{display:none!important}
 #treasure-panel{max-height:82vh;overflow:auto} .treasure-card{border:1px solid #51443b;background:rgba(20,20,25,.94);border-radius:.6rem;padding:.7rem;margin:.5rem 0}
 .treasure-marker{font: bold 12px Inter,sans-serif;text-align:center;}
-body.player-view #token-tray, body.player-view #sidebar, body.player-view #dungeon-quick-controls, body.player-view #fow-tools, body.player-view #btn-move-crypt, body.player-view #btn-grid, body.player-view #btn-mist, body.player-view #mist-density, body.player-view #btn-lore-toggle, body.player-view #treasure-panel, body.player-view #tool-token {display:none!important}
+body.player-view #tool-delete-token, body.firebase-player #tool-delete-token, body.player-view #token-tray, body.player-view #sidebar, body.player-view #dungeon-quick-controls, body.player-view #fow-tools, body.player-view #btn-move-crypt, body.player-view #btn-grid, body.player-view #btn-mist, body.player-view #mist-density, body.player-view #btn-lore-toggle, body.player-view #treasure-panel, body.player-view #tool-token {display:none!important}
 body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {display:none!important}
 body.player-view #mist-overlay {display:none!important}
 @media(max-width:800px){#treasure-panel{left:3vw!important;right:3vw!important;width:auto!important;max-width:none!important} #player-view-controls{max-width:48vw;}}
@@ -186,6 +186,9 @@ body.player-view #mist-overlay {display:none!important}
             </button>
             <button id="tool-token" onclick="setTool('token')" class="px-3 py-1.5 rounded bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 text-xs flex items-center gap-1.5 transition" title="Adicionar / Mover Tokens">
                 <i class="fa-solid fa-chess-rook"></i> <span class="hidden sm:inline">Tokens</span>
+            </button>
+            <button id="tool-delete-token" type="button" onclick="setTool(currentTool === 'delete-token' ? 'pan' : 'delete-token')" class="px-3 py-1.5 rounded bg-gothic-800 hover:bg-red-950 border border-red-800 text-xs text-red-300 flex items-center gap-1.5 transition" title="Excluir um token do mestre: ative e toque no token no mapa">
+                <i class="fa-solid fa-trash-can"></i> <span class="hidden sm:inline">Excluir token</span>
             </button>
             
             <!-- Dungeon Vision / Fog Tools (Visible in Dungeon mode) -->
@@ -693,12 +696,38 @@ body.player-view #mist-overlay {display:none!important}
         }
 
         function setTool(tool) {
+            if (tool === 'delete-token' && window.firebaseRole === 'player') return;
             currentTool = tool;
-            ['pan', 'token', 'reveal', 'hide'].forEach(t => {
+            ['pan', 'token', 'reveal', 'hide', 'delete-token'].forEach(t => {
                 const el = document.getElementById(`tool-${t}`);
-                if (el) el.classList.toggle('bg-blood-900', tool === t);
+                if (el) {
+                    el.classList.toggle('bg-blood-900', tool === t && t !== 'delete-token');
+                    el.classList.toggle('bg-red-900', tool === t && t === 'delete-token');
+                    el.setAttribute('aria-pressed', String(tool === t));
+                }
             });
-            container.style.cursor = (tool === 'pan') ? 'grab' : ((tool === 'reveal' || tool === 'hide') ? 'cell' : 'crosshair');
+            container.style.cursor = (tool === 'pan') ? 'grab' : ((tool === 'reveal' || tool === 'hide' || tool === 'delete-token') ? 'crosshair' : 'crosshair');
+        }
+
+        function deleteTokenAt(gridX, gridY, mouseX, mouseY, isTouch) {
+            if (window.firebaseRole !== 'master') return;
+            const candidates = tokens.filter(t => t.type !== 'hero'
+                && t.map === currentMapMode);
+            // Seleciona primeiro o token na célula; se for toque, permite pequeno desvio.
+            let target = [...candidates].reverse().find(t => t.x === gridX && t.y === gridY);
+            if (!target && isTouch) {
+                const fx = mouseX / tileSize, fy = mouseY / tileSize;
+                target = candidates.map(t => ({t, d: Math.hypot(t.x + 0.5 - fx, t.y + 0.5 - fy)}))
+                    .filter(o => o.d <= 0.85).sort((a, b) => a.d - b.d)[0]?.t;
+            }
+            if (!target) return;
+            if (!confirm(`Excluir apenas o token "${target.name}"?`)) return;
+            tokens = tokens.filter(t => t.id !== target.id);
+            populatePlayerSelects();
+            drawMap();
+            // A sessão grava apenas os tokens criados pelo mestre; os heróis permanecem.
+            window.ValeCorvoSync?.queueSessionSave();
+            setTool('pan');
         }
 
         // Apply Fog of War Paint
@@ -1427,6 +1456,13 @@ body.player-view #mist-overlay {display:none!important}
             const mouseY = (e.clientY - rect.top - offsetY) / scale;
             const gridX = Math.floor(mouseX / tileSize);
             const gridY = Math.floor(mouseY / tileSize);
+
+            if (currentTool === 'delete-token') {
+                isDragging = false;
+                draggedTokenId = null;
+                deleteTokenAt(gridX, gridY, mouseX, mouseY, isTouch);
+                return;
+            }
 
             if (movingCryptEntrance && currentMapMode === 'overworld' && gridX >= 0 && gridX < GRID_COLS && gridY >= 0 && gridY < GRID_ROWS) {
                 cryptEntrance = { x: gridX, y: gridY };
