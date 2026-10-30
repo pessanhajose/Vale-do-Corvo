@@ -257,6 +257,8 @@ body.player-view #mist-overlay {display:none!important}
         <!-- Interactive Map Canvas Container -->
         <div id="map-container" class="flex-1 relative bg-gothic-950 overflow-hidden cursor-grab">
             <canvas id="tactical-map" class="absolute top-0 left-0"></canvas>
+            <!-- Nomes com fonte de tamanho fixo, legíveis nos celulares mesmo com zoom baixo. -->
+            <div id="player-name-labels" class="absolute inset-0 pointer-events-none overflow-hidden" style="z-index:6" aria-hidden="true"></div>
 
             <!-- Atmospheric Dark & Thick Mist Overlay Effect -->
             <div id="mist-overlay" class="absolute inset-0 pointer-events-none mix-blend-multiply overflow-hidden transition-opacity duration-500" style="opacity: 0.85;">
@@ -1018,6 +1020,37 @@ body.player-view #mist-overlay {display:none!important}
             renderTreasurePanel();drawMap();window.ValeCorvoSync?.saveTreasures(treasures);
         }
 
+        // Nomes de TODOS os jogadores, inclusive do próprio usuário, em pixels da tela.
+        // A névoa da cripta continua respeitada para os jogadores.
+        function updatePlayerNameLabels() {
+            const layer = document.getElementById('player-name-labels');
+            if (!layer) return;
+            const fragment = document.createDocumentFragment();
+            const width = container.clientWidth, height = container.clientHeight;
+            for (const token of tokens) {
+                if (token.type !== 'hero' || (token.map && token.map !== currentMapMode)) continue;
+                if (window.firebaseRole === 'player' && currentMapMode === 'dungeon'
+                    && dungeonFog[token.x]?.[token.y] !== 1) continue;
+                const x = offsetX + (token.x + 0.5) * tileSize * scale;
+                const y = offsetY + (token.y + 0.5) * tileSize * scale;
+                if (x < -90 || x > width + 90 || y < -45 || y > height + 45) continue;
+                const label = document.createElement('span');
+                const text = String(token.displayName || token.name || 'Jogador').trim();
+                label.textContent = text || 'Jogador';
+                label.title = text;
+                label.style.cssText = 'position:absolute;transform:translate(-50%,-100%);'
+                    + 'white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;'
+                    + 'padding:3px 7px;border-radius:5px;background:rgba(9,10,15,.94);'
+                    + 'border:1px solid ' + (token.color || '#d4af37') + ';'
+                    + 'color:#fef3c7;font:700 13px Inter,Arial,sans-serif;'
+                    + 'line-height:18px;text-shadow:0 1px 2px #000;box-shadow:0 2px 6px #0009;';
+                label.style.left = x + 'px';
+                label.style.top = (y - Math.max(10, tileSize * scale * 0.38) - 5) + 'px';
+                fragment.appendChild(label);
+            }
+            layer.replaceChildren(fragment);
+        }
+
         function drawMap() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -1076,27 +1109,9 @@ body.player-view #mist-overlay {display:none!important}
                 ctx.textBaseline = 'middle';
                 ctx.fillText(token.name.substring(0, 3).toUpperCase(), tx, ty);
 
-                // Nome de exibição escolhido pelo jogador, acima do token, para identificar quem é quem.
-                if (token.type === 'hero') {
-                    // Nome real vem de presence/{uid}; enquanto sincroniza, mostre a
-                    // classe para nenhum personagem aparecer sem identificação.
-                    const fullName = String(token.displayName || token.name || 'Jogador').trim();
-                    const label = fullName.length > 20 ? fullName.slice(0, 19) + '…' : fullName;
-                    ctx.font = `bold ${Math.max(13, tileSize * 0.34)}px Inter, sans-serif`;
-                    const lw = ctx.measureText(label).width + 10, lh = Math.max(14, tileSize * 0.4);
-                    const lx = tx - lw / 2, ly = ty - radius - lh - 3;
-                    ctx.beginPath();
-                    if (ctx.roundRect) ctx.roundRect(lx, ly, lw, lh, 4); else ctx.rect(lx, ly, lw, lh);
-                    ctx.fillStyle = 'rgba(10,10,14,0.82)';
-                    ctx.fill();
-                    ctx.lineWidth = 1;
-                    ctx.strokeStyle = token.color;
-                    ctx.stroke();
-                    ctx.fillStyle = '#fef3c7';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(label, tx, ly + lh / 2 + 0.5);
-                }
+                // Os nomes ficam em elementos HTML independentes do zoom do canvas.
+                // Isso evita etiquetas minúsculas em telas de celular.
+
             });
 
             // Draw Fog of War in Dungeon Mode
@@ -1107,6 +1122,7 @@ body.player-view #mist-overlay {display:none!important}
             drawTreasureMarkers();
 
             ctx.restore();
+            updatePlayerNameLabels();
             updateScaleBar();
         }
 
