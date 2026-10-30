@@ -217,6 +217,66 @@ async function migrateOldTreasures() {
   }));
   if (found.length) await saveTreasures(found);
 }
+
+/** Publica a presença do usuário na conexão atual. */
+async function announcePresence() {
+  const user = activeUser;
+  if (!user) return;
+  const presenceRef = ref(db, `presence/${user.uid}`);
+  await onDisconnect(presenceRef).remove();
+  if (activeUser?.uid !== user.uid) return;
+  await set(presenceRef, { uid: user.uid, active: true, updatedAt: serverTimestamp() });
+}
+
+/** Busca e memoriza o nome público do perfil, sem leituras simultâneas duplicadas. */
+async function loadDisplayName(uid) {
+  if (!uid) return "";
+  if (displayNames.has(uid)) return displayNames.get(uid) || "";
+  if (pendingNames.has(uid)) return pendingNames.get(uid);
+  const request = get(ref(db, `users/${uid}`))
+    .then(snap => {
+      const value = snap.exists() ? snap.val() : null;
+      const name = typeof value?.displayName === "string" ? value.displayName.trim() : "";
+      displayNames.set(uid, name);
+      return name;
+    })
+    .catch(error => {
+      showSyncError(error);
+      return "";
+    })
+    .finally(() => pendingNames.delete(uid));
+  pendingNames.set(uid, request);
+  return request;
+}
+
+/** Lê cada segredo individualmente, respeitando as regras de gmNotes/{id}. */
+async function loadGmNotes(items) {
+  if (role !== "master" || !activeUser) {
+    window.ValeCorvoApp?.setGmNotes?.({});
+    return;
+  }
+  const ids = [...new Set((Array.isArray(items) ? items : [])
+    .map(item => item?.id)
+    .filter(id => id !== undefined && id !== null)
+    .map(String)
+    .filter(id => /^[A-Za-z0-9_-]{1,80}$/.test(id)))];
+  const pairs = await Promise.all(ids.map(async id => {
+    const snap = await get(ref(db, `gmNotes/${id}`));
+    return snap.exists() ? [id, snap.val()] : null;
+  }));
+  window.ValeCorvoApp?.setGmNotes?.(Object.fromEntries(pairs.filter(Boolean)));
+}
+
+/** Grava segredos por item para respeitar as regras existentes em gmNotes/{id}. */
+async function saveGmNotes(notes) {
+  if (role !== "master" || !activeUser || !notes || typeof notes !== "object" || Array.isArray(notes)) return;
+  const writes = Object.entries(notes)
+    .filter(([id, note]) => /^[A-Za-z0-9_-]{1,80}$/.test(id) && note && typeof note === "object")
+    .map(([id, note]) => set(ref(db, `gmNotes/${id}`), JSON.parse(JSON.stringify(note))));
+  await Promise.all(writes);
+  window.ValeCorvoApp?.setGmNotes?.(notes);
+}
+
 const withStatus = fn => (...args) => tracked(() => fn(...args));
 window.ValeCorvoSync = {
   queueSessionSave,
@@ -257,7 +317,7 @@ onAuthStateChanged(auth, async user => {
   // do contrário o mestre deixava de ver o token até o jogador recarregar a página (F5).
   unsubscribers.push(onValue(ref(db, ".info/connected"), snap => {
     if (snap.val() === true) {
-      announcePresence();
+      announcePresence().catch(showSyncError);
       if (!lastSaveFailed) setSyncStatus("ok");
     } else {
       setSyncStatus("offline");
@@ -323,7 +383,7 @@ onAuthStateChanged(auth, async user => {
     const values = snap.val()?.items || {};
     const items = Object.entries(values).map(([id, data]) => ({ ...data, id: data?.id ?? id }));
     window.ValeCorvoApp?.setTreasures?.(items);
-    loadGmNotes(items);
+    loadGmNotes(items).catch(showSyncError);
     if (!items.length) migrateOldTreasures();
   }, showSyncError));
 
