@@ -94,6 +94,10 @@ function stateForRealtimeDatabase() {
     cryptEntrance: JSON.parse(JSON.stringify(state.cryptEntrance)),
     visionRadius: state.visionRadius,
     magicVisionEnabled: state.magicVisionEnabled,
+    // Névoa ambiental: liga/desliga e intensidade para mestre e jogadores.
+    mistEnabled: state.mistEnabled === true,
+    mistDensity: Number.isFinite(state.mistDensity)
+      ? Math.max(0.2, Math.min(0.95, state.mistDensity)) : 0.85,
     updatedAt: serverTimestamp(),
     updatedBy: activeUser?.uid || null
   };
