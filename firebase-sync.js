@@ -20,87 +20,78 @@ function stopListeners() {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = null;
 }
+let syncChip = null;
+let pendingSaves = 0;
+let lastSaveFailed = false;
+let saveRetries = 0;
+function ensureSyncChip() {
+  if (syncChip) return syncChip;
+  const bar = document.getElementById("firebase-user-bar");
+  if (!bar) return null;
+  syncChip = document.createElement("button");
+  syncChip.type = "button";
+  syncChip.id = "sync-status";
+  syncChip.style.cssText = "margin-left:.5rem;padding:2px 8px;border-radius:9999px;font-size:11px;border:1px solid #475569;background:#0f172a;color:#94a3b8;cursor:pointer;max-width:70vw;text-align:left";
+  syncChip.addEventListener("click", () => { saveRetries = 0; lastSaveFailed = false; queueSessionSave(); });
+  bar.appendChild(syncChip);
+  return syncChip;
+}
+function setSyncStatus(kind, detail = "") {
+  const chip = ensureSyncChip();
+  if (!chip) return;
+  const retry = role === "master" ? " — toque para tentar de novo" : "";
+  const states = {
+    saving: ["⏳ Salvando…", "#94a3b8"],
+    ok: ["✓ Salvo " + new Date().toLocaleTimeString("pt-BR"), "#6ee7b7"],
+    error: ["⚠ Não salvou: " + detail + retry, "#fca5a5"],
+    offline: ["⚠ Sem conexão com o Firebase", "#fcd34d"]
+  };
+  const [text, color] = states[kind];
+  chip.textContent = text;
+  chip.style.color = color;
+  chip.style.borderColor = color;
+  chip.title = detail;
+}
+function describeSyncError(error) {
+  const code = String(error?.code || "").toLowerCase();
+  if (code.includes("permission")) return "sem permissão — este aparelho (UID) precisa estar em masters, ou as regras do banco foram alteradas";
+  return error?.message || error?.code || "erro de sincronização";
+}
+// Erros ficam visíveis durante o jogo (a mensagem do login some depois de entrar).
 function showSyncError(error) {
   console.error("[Vale-do-Corvo/Firebase]", error);
+  setSyncStatus("error", describeSyncError(error));
   const message = document.getElementById("firebase-auth-message");
   if (message) {
-    const denied = error?.code === "PERMISSION_DENIED" || error?.code === "permission_denied";
-    message.textContent = "Firebase: " + (denied
-      ? "acesso negado pelas regras do Realtime Database."
-      : error?.message || error?.code || "erro de sincronização.");
+    message.textContent = "Firebase: " + describeSyncError(error);
     message.className = "text-sm text-red-300 mt-3";
   }
 }
-const clip = (v, n = 1500) => String(v ?? "").slice(0, n);
-function loadDisplayName(uid) {
-  if (displayNames.has(uid)) return Promise.resolve(displayNames.get(uid));
-  if (pendingNames.has(uid)) return pendingNames.get(uid);
-  const job = get(ref(db, `users/${uid}`))
-    .then(snap => {
-      const name = snap.exists() ? clip(snap.val()?.displayName, 60).trim() : "";
-      displayNames.set(uid, name);
-      return name;
-    })
-    .catch(() => "")
-    .finally(() => pendingNames.delete(uid));
-  pendingNames.set(uid, job);
-  return job;
-}
-function publishGmNotes() {
-  window.ValeCorvoApp?.setGmNotes?.(Object.fromEntries([...gmNotes].filter(([, v]) => v)));
-}
-// Segredos (respostas e consequências) ficam em gmNotes/<id>: as regras do banco só liberam
-// leitura e escrita para o mestre, então jogadores não conseguem ler nem pelo console.
-async function loadGmNotes(items) {
-  if (role !== "master" || !activeUser) return;
-  const missing = items.map(i => String(i.id)).filter(id => !gmNotes.has(id));
-  if (!missing.length) return;
-  await Promise.all(missing.map(async id => {
-    try {
-      const snap = await get(ref(db, `gmNotes/${id}`));
-      gmNotes.set(id, snap.exists() ? snap.val() : null);
-    } catch (error) { showSyncError(error); }
-  }));
-  publishGmNotes();
-}
-async function saveGmNotes(notes) {
-  if (role !== "master" || !activeUser || !notes || typeof notes !== "object") return;
-  for (const [id, n] of Object.entries(notes)) {
-    const clean = {
-      treasureId: String(id),
-      answer: clip(n?.answer), success: clip(n?.success), failure: clip(n?.failure),
-      reward: clip(n?.reward), notes: clip(n?.notes),
-      rewards: Array.isArray(n?.rewards) ? n.rewards.slice(0, 12).map(r => clip(r, 400)) : [],
-      updatedAt: serverTimestamp(), updatedBy: activeUser.uid
-    };
-    try {
-      await set(ref(db, `gmNotes/${id}`), clean);
-      gmNotes.set(String(id), { ...clean, updatedAt: Date.now() });
-    } catch (error) { showSyncError(error); throw error; }
-  }
-  publishGmNotes();
-}
-async function announcePresence() {
-  if (!activeUser) return;
-  const presenceRef = ref(db, `presence/${activeUser.uid}`);
+// Acompanha cada gravação: mostra "Salvando…", "Salvo" ou o motivo da falha.
+async function tracked(fn) {
+  pendingSaves++;
+  setSyncStatus("saving");
   try {
-    await onDisconnect(presenceRef).remove();
-    await set(presenceRef, { active: true, uid: activeUser.uid, updatedAt: serverTimestamp() });
+    const result = await fn();
+    lastSaveFailed = false;
+    return result;
   } catch (error) {
+    lastSaveFailed = true;
     showSyncError(error);
+    throw error;
+  } finally {
+    pendingSaves--;
+    if (!pendingSaves && !lastSaveFailed) setSyncStatus("ok");
   }
 }
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") announcePresence();
-});
 function stateForRealtimeDatabase() {
   const state = window.ValeCorvoApp?.getState?.();
   if (!state) return null;
   return {
-    tokens: state.tokens,
+    tokens: JSON.parse(JSON.stringify(state.tokens)),
     dungeonFog: state.dungeonFog.flat(),
     mapMode: state.mapMode,
-    cryptEntrance: state.cryptEntrance,
+    cryptEntrance: JSON.parse(JSON.stringify(state.cryptEntrance)),
     visionRadius: state.visionRadius,
     magicVisionEnabled: state.magicVisionEnabled,
     updatedAt: serverTimestamp(),
@@ -121,7 +112,12 @@ async function saveSessionNow() {
 function queueSessionSave() {
   if (role !== "master" || !activeUser || applyingRemoteState) return;
   if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => saveSessionNow().catch(showSyncError), 500);
+  saveTimer = setTimeout(() => {
+    tracked(saveSessionNow).then(() => { saveRetries = 0; }).catch(error => {
+      const denied = String(error?.code || "").toLowerCase().includes("permission");
+      if (!denied && saveRetries < 5) { saveRetries++; setTimeout(queueSessionSave, 3000 * saveRetries); }
+    });
+  }, 500);
 }
 async function saveTokenPosition(token) {
   if (!activeUser || !token || !Number.isInteger(token.x) || !Number.isInteger(token.y)) return;
@@ -144,7 +140,7 @@ async function saveTokenPosition(token) {
       if (matching) {
         await set(ref(db, `players/${matching[0]}`), { ...clean, uid: matching[0] });
       }
-      await saveOtherHeroes(token);
+      try { await saveOtherHeroes(token); } catch (error) { showSyncError(error); }
       await saveSessionNow();
     } else if (role === "master") {
       await saveSessionNow();
@@ -221,7 +217,14 @@ async function migrateOldTreasures() {
   }));
   if (found.length) await saveTreasures(found);
 }
-window.ValeCorvoSync = { queueSessionSave, saveTokenPosition, saveExploration, saveTreasures, saveGmNotes };
+const withStatus = fn => (...args) => tracked(() => fn(...args));
+window.ValeCorvoSync = {
+  queueSessionSave,
+  saveTokenPosition: withStatus(saveTokenPosition),
+  saveExploration: withStatus(saveExploration),
+  saveTreasures: withStatus(saveTreasures),
+  saveGmNotes: withStatus(saveGmNotes)
+};
 
 onAuthStateChanged(auth, async user => {
   const previousUser = activeUser;
@@ -253,7 +256,12 @@ onAuthStateChanged(auth, async user => {
   // bloqueado, rede instável). Por isso a presença é refeita a cada reconexão, não só no login;
   // do contrário o mestre deixava de ver o token até o jogador recarregar a página (F5).
   unsubscribers.push(onValue(ref(db, ".info/connected"), snap => {
-    if (snap.val() === true) announcePresence();
+    if (snap.val() === true) {
+      announcePresence();
+      if (!lastSaveFailed) setSyncStatus("ok");
+    } else {
+      setSyncStatus("offline");
+    }
   }, showSyncError));
 
   // A sessão do mestre é compartilhada com todas as contas autenticadas.
