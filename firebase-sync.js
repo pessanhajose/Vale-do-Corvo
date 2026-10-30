@@ -113,6 +113,18 @@ async function saveSessionNow() {
     throw error;
   }
 }
+// Névoa ambiental em nó isolado: alternar não regrava tokens, mapa ou progresso.
+async function saveMistSettings(settings) {
+  if (role !== "master" || !activeUser || !settings) return;
+  await tracked(() => set(ref(db, "sessions/mist"), {
+    enabled: settings.enabled === true,
+    density: Number.isFinite(settings.density)
+      ? Math.max(0.2, Math.min(0.95, settings.density)) : 0.85,
+    updatedAt: serverTimestamp(),
+    updatedBy: activeUser.uid
+  }));
+}
+
 function queueSessionSave() {
   if (role !== "master" || !activeUser || applyingRemoteState) return;
   if (saveTimer) clearTimeout(saveTimer);
@@ -301,6 +313,7 @@ async function saveGmNotes(notes) {
 const withStatus = fn => (...args) => tracked(() => fn(...args));
 window.ValeCorvoSync = {
   queueSessionSave,
+  saveMistSettings: (...args) => saveMistSettings(...args).catch(showSyncError),
   // Login concluído: atualiza o nome visível sem esperar a próxima reconexão.
   refreshPresence: () => announcePresence().catch(showSyncError),
   saveTokenPosition: withStatus(saveTokenPosition),
@@ -347,19 +360,27 @@ onAuthStateChanged(auth, async user => {
     }
   }, showSyncError));
 
-  // A sessão do mestre é compartilhada com todas as contas autenticadas.
-  // Este modo prioriza simplicidade e confiança entre jogadores: a geometria e os dados enviados ao navegador são públicos.
-  // Uma nova entrada do mestre sempre começa com a névoa ambiental desligada.
-  // O reset escreve apenas esse campo; não substitui os tokens ou o progresso.
-  let firstSessionSnapshot = true;
+  // O mestre começa toda nova entrada sem névoa, e todos os jogadores
+  // acompanham o mesmo nó de maneira independente das gravações do mapa.
+  let firstMistSnapshot = true;
+  unsubscribers.push(onValue(ref(db, "sessions/mist"), snap => {
+    if (firstMistSnapshot) {
+      firstMistSnapshot = false;
+      if (role === "master") {
+        saveMistSettings({ enabled: false, density: snap.val()?.density ?? 0.85 })
+          .catch(showSyncError);
+        window.ValeCorvoApp?.applyMistSettings?.({ enabled: false, density: snap.val()?.density ?? 0.85 });
+        return;
+      }
+    }
+    window.ValeCorvoApp?.applyMistSettings?.(snap.exists()
+      ? snap.val() : { enabled: false, density: 0.85 });
+  }, showSyncError));
+
+  // O mapa segue sincronizado separadamente da névoa ambiental.
   unsubscribers.push(onValue(ref(db, "sessions/main"), snap => {
     if (snap.exists()) {
       const remote = { ...snap.val() };
-      if (firstSessionSnapshot && role === "master" && remote.mistEnabled === true) {
-        remote.mistEnabled = false;
-        update(ref(db, "sessions/main"), { mistEnabled: false }).catch(showSyncError);
-      }
-      firstSessionSnapshot = false;
       if (Array.isArray(remote.dungeonFog) && remote.dungeonFog.length === 50 * 40 && !Array.isArray(remote.dungeonFog[0])) {
         remote.dungeonFog = Array.from({ length: 50 }, (_, x) => remote.dungeonFog.slice(x * 40, (x + 1) * 40));
       }
