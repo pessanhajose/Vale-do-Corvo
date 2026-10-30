@@ -1,7 +1,7 @@
 import { auth, db } from "./firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  ref, get, set, onValue, onDisconnect, serverTimestamp
+  ref, get, set, update, onValue, onDisconnect, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
 let activeUser = null;
@@ -349,9 +349,17 @@ onAuthStateChanged(auth, async user => {
 
   // A sessão do mestre é compartilhada com todas as contas autenticadas.
   // Este modo prioriza simplicidade e confiança entre jogadores: a geometria e os dados enviados ao navegador são públicos.
+  // Uma nova entrada do mestre sempre começa com a névoa ambiental desligada.
+  // O reset escreve apenas esse campo; não substitui os tokens ou o progresso.
+  let firstSessionSnapshot = true;
   unsubscribers.push(onValue(ref(db, "sessions/main"), snap => {
     if (snap.exists()) {
       const remote = { ...snap.val() };
+      if (firstSessionSnapshot && role === "master" && remote.mistEnabled === true) {
+        remote.mistEnabled = false;
+        update(ref(db, "sessions/main"), { mistEnabled: false }).catch(showSyncError);
+      }
+      firstSessionSnapshot = false;
       if (Array.isArray(remote.dungeonFog) && remote.dungeonFog.length === 50 * 40 && !Array.isArray(remote.dungeonFog[0])) {
         remote.dungeonFog = Array.from({ length: 50 }, (_, x) => remote.dungeonFog.slice(x * 40, (x + 1) * 40));
       }
