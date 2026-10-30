@@ -365,15 +365,25 @@ onAuthStateChanged(auth, async user => {
       refreshActivePlayers();
     }, showSyncError));
   } else {
-    unsubscribers.push(onValue(ref(db, `players/${user.uid}`), snap => {
-      if (snap.exists()) {
-        const player = snap.val();
-        window.firebaseCharacterName = player.characterName || null;
-        const applyOwn = () => window.ValeCorvoApp?.applyOwnPlayerDoc?.(
-          { ...player, displayName: displayNames.get(user.uid) || user.displayName || "" });
-        applyOwn();
-        if (!displayNames.has(user.uid)) loadDisplayName(user.uid).then(name => { if (name) applyOwn(); });
-      }
+    // Jogadores também recebem a lista de personagens conectados.
+    // A regra de leitura é aberta apenas para usuários autenticados; cada um continua
+    // podendo escrever somente em players/{seu próprio UID}.
+    let presenceValues = {};
+    let playersValues = {};
+    const refreshVisiblePlayers = () => {
+      const visiblePlayers = Object.entries(playersValues)
+        .filter(([uid, data]) => presenceValues[uid]?.active === true && data)
+        .map(([uid, data]) => ({ ...data, uid }));
+      playerDocs = new Map(visiblePlayers.map(p => [p.uid, p]));
+      window.ValeCorvoApp?.applyPlayerDocs?.(visiblePlayers);
+    };
+    unsubscribers.push(onValue(ref(db, "presence"), snap => {
+      presenceValues = snap.val() || {};
+      refreshVisiblePlayers();
+    }, showSyncError));
+    unsubscribers.push(onValue(ref(db, "players"), snap => {
+      playersValues = snap.val() || {};
+      refreshVisiblePlayers();
     }, showSyncError));
   }
 
