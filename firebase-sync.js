@@ -225,7 +225,13 @@ async function announcePresence() {
   const presenceRef = ref(db, `presence/${user.uid}`);
   await onDisconnect(presenceRef).remove();
   if (activeUser?.uid !== user.uid) return;
-  await set(presenceRef, { uid: user.uid, active: true, updatedAt: serverTimestamp() });
+  await set(presenceRef, {
+    uid: user.uid,
+    active: true,
+    // Nome público escolhido no login. Não expõe o perfil users/{uid} aos demais.
+    displayName: String(user.displayName || "").trim().slice(0, 60),
+    updatedAt: serverTimestamp()
+  });
 }
 
 /** Busca e memoriza o nome público do perfil, sem leituras simultâneas duplicadas. */
@@ -348,7 +354,10 @@ onAuthStateChanged(auth, async user => {
     const refreshActivePlayers = () => {
       const activePlayers = Object.entries(playersValues)
         .filter(([uid, data]) => presenceValues[uid]?.active === true && data)
-        .map(([uid, data]) => ({ ...data, uid, displayName: displayNames.get(uid) || "" }));
+        .map(([uid, data]) => ({
+          ...data, uid,
+          displayName: presenceValues[uid]?.displayName || displayNames.get(uid) || ""
+        }));
       playerDocs = new Map(activePlayers.map(p => [p.uid, p]));
       window.ValeCorvoApp?.applyPlayerDocs?.(activePlayers);
       // Busca o nome de exibição dos jogadores novos e redesenha quando chegar.
@@ -373,7 +382,10 @@ onAuthStateChanged(auth, async user => {
     const refreshVisiblePlayers = () => {
       const visiblePlayers = Object.entries(playersValues)
         .filter(([uid, data]) => presenceValues[uid]?.active === true && data)
-        .map(([uid, data]) => ({ ...data, uid }));
+        .map(([uid, data]) => ({
+          ...data, uid,
+          displayName: presenceValues[uid]?.displayName || (uid === user.uid ? user.displayName : "") || ""
+        }));
       playerDocs = new Map(visiblePlayers.map(p => [p.uid, p]));
       window.ValeCorvoApp?.applyPlayerDocs?.(visiblePlayers);
     };
