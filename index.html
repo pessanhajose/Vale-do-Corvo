@@ -1077,9 +1077,12 @@ body.player-view #mist-overlay {display:none!important}
                 ctx.fillText(token.name.substring(0, 3).toUpperCase(), tx, ty);
 
                 // Nome de exibição escolhido pelo jogador, acima do token, para identificar quem é quem.
-                if (token.type === 'hero' && token.displayName) {
-                    const label = token.displayName.length > 16 ? token.displayName.slice(0, 15) + '…' : token.displayName;
-                    ctx.font = `bold ${Math.max(10, tileSize * 0.3)}px Inter, sans-serif`;
+                if (token.type === 'hero') {
+                    // Nome real vem de presence/{uid}; enquanto sincroniza, mostre a
+                    // classe para nenhum personagem aparecer sem identificação.
+                    const fullName = String(token.displayName || token.name || 'Jogador').trim();
+                    const label = fullName.length > 20 ? fullName.slice(0, 19) + '…' : fullName;
+                    ctx.font = `bold ${Math.max(13, tileSize * 0.34)}px Inter, sans-serif`;
                     const lw = ctx.measureText(label).width + 10, lh = Math.max(14, tileSize * 0.4);
                     const lx = tx - lw / 2, ly = ty - radius - lh - 3;
                     ctx.beginPath();
