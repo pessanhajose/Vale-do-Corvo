@@ -225,11 +225,22 @@ async function announcePresence() {
   const presenceRef = ref(db, `presence/${user.uid}`);
   await onDisconnect(presenceRef).remove();
   if (activeUser?.uid !== user.uid) return;
+  // O primeiro onAuthStateChanged pode ocorrer antes de o formulário salvar o
+  // displayName; busque o perfil próprio para evitar publicar um nome vazio.
+  let name = String(user.displayName || "").trim();
+  try {
+    const profile = await get(ref(db, `users/${user.uid}`));
+    if (profile.exists() && typeof profile.val()?.displayName === "string") {
+      name = profile.val().displayName.trim() || name;
+    }
+  } catch (error) {
+    console.warn("[Vale-do-Corvo] Nome de perfil indisponível:", error);
+  }
+  if (activeUser?.uid !== user.uid) return;
   await set(presenceRef, {
     uid: user.uid,
     active: true,
-    // Nome público escolhido no login. Não expõe o perfil users/{uid} aos demais.
-    displayName: String(user.displayName || "").trim().slice(0, 60),
+    displayName: name.slice(0, 60),
     updatedAt: serverTimestamp()
   });
 }
@@ -286,6 +297,8 @@ async function saveGmNotes(notes) {
 const withStatus = fn => (...args) => tracked(() => fn(...args));
 window.ValeCorvoSync = {
   queueSessionSave,
+  // Login concluído: atualiza o nome visível sem esperar a próxima reconexão.
+  refreshPresence: () => announcePresence().catch(showSyncError),
   saveTokenPosition: withStatus(saveTokenPosition),
   saveExploration: withStatus(saveExploration),
   saveTreasures: withStatus(saveTreasures),
@@ -384,7 +397,7 @@ onAuthStateChanged(auth, async user => {
         .filter(([uid, data]) => presenceValues[uid]?.active === true && data)
         .map(([uid, data]) => ({
           ...data, uid,
-          displayName: presenceValues[uid]?.displayName || (uid === user.uid ? user.displayName : "") || ""
+          displayName: presenceValues[uid]?.displayName || (uid === user.uid ? user.displayName : "") || data.displayName || data.characterName || ""
         }));
       playerDocs = new Map(visiblePlayers.map(p => [p.uid, p]));
       window.ValeCorvoApp?.applyPlayerDocs?.(visiblePlayers);
