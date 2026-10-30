@@ -83,12 +83,12 @@
         .mist-layer-1 {
             animation: drift 18s ease-in-out infinite;
             pointer-events: none;
-            background: radial-gradient(ellipse at center, rgba(14, 19, 18, 0.88) 0%, rgba(10, 14, 13, 0.96) 70%, rgba(5, 8, 7, 0.99) 100%);
+            background: radial-gradient(ellipse at 30% 40%, rgba(200,210,215,.38), rgba(115,133,143,.62) 55%, rgba(60,76,91,.72) 100%);
         }
         .mist-layer-2 {
             animation: driftReverse 24s ease-in-out infinite;
             pointer-events: none;
-            background: linear-gradient(135deg, rgba(20, 28, 25, 0.7) 0%, rgba(12, 16, 15, 0.85) 50%, rgba(5, 8, 7, 0.95) 100%);
+            background: linear-gradient(135deg, rgba(190,205,215,.20), rgba(138,153,163,.48) 50%, rgba(85,102,117,.32));
         }
         .pulse-glow {
             animation: pulseGlow 2s infinite;
@@ -261,12 +261,12 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         <div id="map-container" class="flex-1 relative bg-gothic-950 overflow-hidden cursor-grab">
             <canvas id="tactical-map" class="absolute top-0 left-0"></canvas>
             <!-- Nomes com fonte de tamanho fixo, legíveis nos celulares mesmo com zoom baixo. -->
-            <div id="player-name-labels" class="absolute inset-0 pointer-events-none overflow-hidden" style="z-index:6" aria-hidden="true"></div>
+            <div id="player-name-labels" class="absolute inset-0 pointer-events-none overflow-hidden" style="z-index:9" aria-hidden="true"></div>
 
             <!-- Atmospheric Dark & Thick Mist Overlay Effect -->
-            <div id="mist-overlay" class="absolute inset-0 pointer-events-none mix-blend-multiply overflow-hidden transition-opacity duration-500" style="opacity: 0.85; display: none;" aria-hidden="true">
+            <div id="mist-overlay" class="absolute inset-0 pointer-events-none overflow-hidden transition-opacity duration-500" style="opacity: 0.85; display: none; z-index:7;" aria-hidden="true">
                 <div class="absolute -inset-20 mist-layer-1"></div>
-                <div class="absolute -inset-20 mist-layer-2 mix-blend-darken"></div>
+                <div class="absolute -inset-20 mist-layer-2"></div>
             </div>
 
             <!-- Quick Dungeon Controls Floating Box (Only when in Dungeon mode) -->
@@ -1841,18 +1841,27 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             if (slider && slider.value !== String(mistDensity)) slider.value = String(mistDensity);
         }
 
+        // Atualiza apenas a névoa, sem sobrescrever os dados do mapa.
+        function applySharedMist(settings) {
+            if (!settings || typeof settings !== 'object') return;
+            showMistEffect = settings.enabled === true;
+            mistDensity = Number.isFinite(settings.density)
+                ? Math.max(0.2, Math.min(0.95, settings.density)) : 0.85;
+            renderMistState();
+        }
+
         function toggleMist() {
             if (window.firebaseRole === 'player') return;
             showMistEffect = !showMistEffect;
             renderMistState();
-            window.ValeCorvoSync?.queueSessionSave();
+            window.ValeCorvoSync?.saveMistSettings?.({enabled: showMistEffect, density: mistDensity});
         }
 
         function adjustMistDensity(value) {
             if (window.firebaseRole === 'player') return;
             mistDensity = Math.max(0.2, Math.min(0.95, Number(value) || 0.85));
             renderMistState();
-            window.ValeCorvoSync?.queueSessionSave();
+            window.ValeCorvoSync?.saveMistSettings?.({enabled: showMistEffect, density: mistDensity});
         }
 
         function updateScaleBar() {
@@ -1873,6 +1882,9 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
 
         // Bridge controlado para sincronização Firebase; as variáveis do mapa continuam privadas neste script.
         window.ValeCorvoApp = {
+            applyMistSettings(settings) {
+                applySharedMist(settings);
+            },
             getState() {
                 return {
                     tokens: tokens.map(t => ({...t})),
@@ -1900,11 +1912,8 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 if (state.cryptEntrance && Number.isInteger(state.cryptEntrance.x) && Number.isInteger(state.cryptEntrance.y)) cryptEntrance = {...state.cryptEntrance};
                 if (Number.isInteger(state.visionRadius)) visionRadius = Math.max(2, Math.min(12, state.visionRadius));
                 if (typeof state.magicVisionEnabled === 'boolean') magicVisionEnabled = state.magicVisionEnabled;
-                // Sessões antigas não possuem mistEnabled: começam sem névoa.
-                showMistEffect = state.mistEnabled === true;
-                mistDensity = Number.isFinite(state.mistDensity)
-                    ? Math.max(0.2, Math.min(0.95, state.mistDensity)) : 0.85;
-                renderMistState();
+                // A névoa ambiental usa sessions/mist, independente das demais alterações
+                // de mapa, evitando que snapshots antigos a liguem/desliguem indevidamente.
                 const radiusInput = document.getElementById('vision-radius');
                 if (radiusInput) radiusInput.value = String(visionRadius);
                 const radiusLabel = document.getElementById('vision-radius-label');
