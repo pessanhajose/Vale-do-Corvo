@@ -39,6 +39,9 @@ form.addEventListener("submit",async e=>{
    throw err;
   }
   await enter(user);
+  // A autenticação pode ter iniciado a presença antes de o nome ser definido.
+  // Reenvia o nome recém-salvo assim que o formulário termina.
+  window.ValeCorvoSync?.refreshPresence?.();
  }catch(err){msg(err.message||"Não foi possível entrar.",true);}
  finally{submit.disabled=false;}
 });
@@ -48,6 +51,8 @@ async function enter(user){
  window.firebaseUser=user;window.firebaseRole=role;window.firebaseCharacterName=null;
  const p=await get(ref(db,"players/"+user.uid));if(p.exists())window.firebaseCharacterName=p.val()?.characterName||null;
  userLabel.textContent=(user.displayName||profile.displayName||"Jogador")+" · "+(role==="master"?"Mestre":"Jogador");
+ // Para sessões retomadas depois de atualizar o site, republica o nome salvo.
+ window.ValeCorvoSync?.refreshPresence?.();
  userBar.classList.remove("hidden");userBar.classList.add("flex");gate.classList.add("hidden");
  if(role==="master"){document.body.classList.remove("firebase-player");}
  else{
