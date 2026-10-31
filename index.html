@@ -4,6 +4,81 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#090a0f">
+    <!-- Versão única para todos os dispositivos. GitHub Pages e celulares podem
+         guardar HTML/JS em cache; os módulos abaixo usam esta mesma revisão. -->
+    <meta name="vale-corvo-version" content="2026-10-30.3">
+    <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
+    <script>
+    (function () {
+      'use strict';
+      const localVersion = "2026-10-30.3";
+      let notifiedVersion = '';
+      function updateUrl(nextVersion) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('mapVersion', nextVersion);
+        return url.href;
+      }
+      function showUpdate(nextVersion) {
+        if (notifiedVersion === nextVersion) return;
+        notifiedVersion = nextVersion;
+        function display() {
+          if (document.getElementById('map-update-notice')) return;
+          const box = document.createElement('div');
+          box.id = 'map-update-notice';
+          box.setAttribute('role', 'status');
+          box.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);'
+            + 'z-index:9999;max-width:calc(100vw - 24px);background:#111827;color:#fef3c7;'
+            + 'border:2px solid #d4af37;border-radius:10px;padding:12px 14px;'
+            + 'box-shadow:0 8px 24px #000a;font:600 14px Arial,sans-serif;'
+            + 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:center';
+          const label = document.createElement('span');
+          label.textContent = 'Nova versão do mapa disponível. Atualize para continuar com todos na mesma versão.';
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = 'Atualizar mapa';
+          button.style.cssText = 'padding:8px 12px;border-radius:7px;border:0;'
+            + 'background:#d4af37;color:#111827;font-weight:bold;cursor:pointer';
+          button.addEventListener('click', () => window.location.replace(updateUrl(nextVersion)));
+          box.append(label,button);
+          document.body.appendChild(box);
+        }
+        if (document.body) display();
+        else document.addEventListener('DOMContentLoaded', display, {once:true});
+      }
+      let checking = false;
+      let initialCheck = true;
+      async function checkVersion() {
+        if (checking || !navigator.onLine) return;
+        checking = true;
+        try {
+          const manifest = new URL('./version.json', document.baseURI);
+          manifest.searchParams.set('check', Date.now().toString());
+          const response = await fetch(manifest.toString(), {cache:'no-store'});
+          if (!response.ok) return;
+          const data = await response.json();
+          if (!data || typeof data.version !== 'string' || data.version === localVersion) return;
+          const target = updateUrl(data.version);
+          // Na primeira abertura, troca automaticamente o HTML antigo;
+          // durante uma campanha, mostra botão para evitar perder arrastos em curso.
+          if (initialCheck && window.location.href !== target) {
+            window.location.replace(target);
+          } else {
+            showUpdate(data.version);
+          }
+        } catch (error) {
+          console.warn('[Vale do Corvo] Verificação de atualização indisponível:', error);
+        } finally {
+          checking = false;
+          initialCheck = false;
+        }
+      }
+      checkVersion();
+      setInterval(checkVersion, 90000);
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) checkVersion();
+      });
+    })();
+    </script>
     <title>Vale-Corvo: Anamap1</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -2073,8 +2148,8 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         };
     </script>
 
-    <script type="module" src="./firebase-auth.js"></script>
-    <script type="module" src="./firebase-sync.js"></script>
+    <script type="module" src="./firebase-auth.js?v=2026-10-30.3"></script>
+    <script type="module" src="./firebase-sync.js?v=2026-10-30.3"></script>
 
 </body>
 </html>
