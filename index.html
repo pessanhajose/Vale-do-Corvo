@@ -6,12 +6,12 @@
     <meta name="theme-color" content="#090a0f">
     <!-- Versão única para todos os dispositivos. GitHub Pages e celulares podem
          guardar HTML/JS em cache; os módulos abaixo usam esta mesma revisão. -->
-    <meta name="vale-corvo-version" content="2026-10-30.3">
+    <meta name="vale-corvo-version" content="2026-10-30.4">
     <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
     <script>
     (function () {
       'use strict';
-      const localVersion = "2026-10-30.3";
+      const localVersion = "2026-10-30.4";
       let notifiedVersion = '';
       function updateUrl(nextVersion) {
         const url = new URL(window.location.href);
@@ -1386,18 +1386,28 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         function isDungeonFloor(x, y) {
             return dungeonFloorKind(x, y) !== null;
         }
-        // Câmara Ritualística: interior sem parede, com espaço para o grupo.
+        // Salas separadas, em células de piso válidas e afastadas das paredes.
+        // A mesma lista é usada pelo sincronizador para todas as contas.
+        const dungeonSpawnRooms = [
+            { name: 'Cela Antiga', x: 20, y: 10 },
+            { name: 'Câmara Ritualística', x: 21, y: 20 },
+            { name: 'Ala Oeste', x: 15, y: 24 },
+            { name: 'Câmara Inferior Oeste', x: 8, y: 31 },
+            { name: 'Grande Salão Inferior', x: 17, y: 36 },
+            { name: 'Câmara dos Sarcófagos', x: 38, y: 24 },
+            { name: 'Câmara Sudeste', x: 34, y: 31 }
+        ];
         function partySpawnPositions(count) {
-            const places = [];
-            for (let y = 19; y <= 21; y++)
-                for (let x = 20; x <= 25; x++)
-                    if (isDungeonFloor(x, y)) places.push({ x, y });
-            for (let y = 18; y <= 22; y++)
-                for (let x = 19; x <= 26; x++)
-                    if (isDungeonFloor(x, y) && !places.some(p => p.x === x && p.y === y))
-                        places.push({ x, y });
-            return Array.from({ length: count }, (_, index) =>
-                places[index % places.length] || { x: 21, y: 20 });
+            return Array.from({ length: count }, (_, index) => {
+                const room = dungeonSpawnRooms[index % dungeonSpawnRooms.length];
+                const repeat = Math.floor(index / dungeonSpawnRooms.length);
+                // Com mais de sete heróis, usa uma posição alternativa na mesma
+                // sala, sem empilhar tokens no mesmo quadrado.
+                const offsets = [[0,0],[1,0],[0,1],[-1,0],[0,-1],[1,1],[-1,-1]];
+                const [dx, dy] = offsets[repeat % offsets.length];
+                const x = room.x + dx, y = room.y + dy;
+                return isDungeonFloor(x,y) ? { x,y } : { x:room.x, y:room.y };
+            });
         }
         // Percorre o trajeto célula a célula: não é permitido atravessar
         // paredes arrastando o token de um lado da sala até o outro.
@@ -1553,7 +1563,9 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 hero.map = 'dungeon';
             });
             initDungeonFog(0);
-            return heroes.map(hero => ({ hero: hero.name, sala: 'Câmara Ritualística' }));
+            return heroes.map((hero, i) => ({
+                hero: hero.name, sala: dungeonSpawnRooms[i % dungeonSpawnRooms.length].name
+            }));
         }
         function beginPartyTransition(mode) {
             if (window.firebaseRole !== 'player' && window.firebaseRole !== 'master') return;
@@ -2148,8 +2160,8 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         };
     </script>
 
-    <script type="module" src="./firebase-auth.js?v=2026-10-30.3"></script>
-    <script type="module" src="./firebase-sync.js?v=2026-10-30.3"></script>
+    <script type="module" src="./firebase-auth.js?v=2026-10-30.4"></script>
+    <script type="module" src="./firebase-sync.js?v=2026-10-30.4"></script>
 
 </body>
 </html>
