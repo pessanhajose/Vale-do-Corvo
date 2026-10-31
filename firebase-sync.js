@@ -310,9 +310,71 @@ async function saveGmNotes(notes) {
   window.ValeCorvoApp?.setGmNotes?.(notes);
 }
 
+// A sala de chegada é a Câmara Ritualística (interior livre, longe das paredes).
+function partyArrivalSpots(count) {
+  const spots = [];
+  for (let y = 19; y <= 21; y++) for (let x = 20; x <= 25; x++) spots.push({x,y});
+  for (let y = 18; y <= 22; y++) for (let x = 19; x <= 26; x++) {
+    if (!spots.some(p => p.x === x && p.y === y)) spots.push({x,y});
+  }
+  return Array.from({length:count}, (_,i) => spots[i % spots.length]);
+}
+let partyTravelInProgress = false;
+let pendingRequestedTravel = null;
+// Mestre é o único autorizado a atualizar os documentos de todos os jogadores.
+// A atualização multipath é atômica: o mapa e todos os heróis mudam juntos.
+async function performPartyTravel(mode) {
+  if (role !== "master" || !activeUser || partyTravelInProgress) return;
+  if (mode !== "dungeon" && mode !== "overworld") return;
+  partyTravelInProgress = true;
+  try {
+    const current = window.ValeCorvoApp?.getState?.();
+    const group = [...playerDocs.entries()].sort(([a],[b]) => a.localeCompare(b));
+    if (!group.length) return;
+    const positions = partyArrivalSpots(group.length);
+    const updates = {};
+    for (let i = 0; i < group.length; i++) {
+      const [uid, doc] = group[i];
+      const spot = mode === "dungeon" ? positions[i] :
+        {x:Math.min(49, (current?.cryptEntrance?.x ?? 8) + i % 2),
+         y:Math.min(39, (current?.cryptEntrance?.y ?? 8) + Math.floor(i / 2))};
+      updates[`players/${uid}`] = {
+        uid, characterName: doc.characterName, map: mode, x:spot.x, y:spot.y,
+        updatedAt: serverTimestamp()
+      };
+    }
+    updates["sessions/main/mapMode"] = mode;
+    updates["sessions/main/updatedAt"] = serverTimestamp();
+    updates["sessions/main/updatedBy"] = activeUser.uid;
+    await update(ref(db), updates);
+  } catch (error) {
+    showSyncError(error);
+    throw error;
+  } finally {
+    partyTravelInProgress = false;
+  }
+}
+// Jogador anuncia a entrada por meio de seu documento (permissão própria).
+// O mestre conectado coordena o grupo ao receber a mudança.
+async function requestPartyTravel(mode) {
+  if (!activeUser || (mode !== "dungeon" && mode !== "overworld")) return;
+  if (role === "master") return tracked(() => performPartyTravel(mode));
+  if (role !== "player") return;
+  const state = window.ValeCorvoApp?.getState?.();
+  const me = state?.tokens?.find(t => t.id === `player-${activeUser.uid}`);
+  if (!me) return;
+  const spot = mode === "dungeon" ? {x:21,y:20} :
+    {x:Math.max(0,Math.min(49,state.cryptEntrance?.x ?? 8)),y:Math.max(0,Math.min(39,state.cryptEntrance?.y ?? 8))};
+  await tracked(() => set(ref(db, `players/${activeUser.uid}`), {
+    uid:activeUser.uid, characterName:me.name, map:mode,
+    x:spot.x, y:spot.y, updatedAt:serverTimestamp()
+  }));
+}
+
 const withStatus = fn => (...args) => tracked(() => fn(...args));
 window.ValeCorvoSync = {
   queueSessionSave,
+  requestPartyTravel: (...args) => requestPartyTravel(...args).catch(showSyncError),
   saveMistSettings: (...args) => saveMistSettings(...args).catch(showSyncError),
   // Login concluído: atualiza o nome visível sem esperar a próxima reconexão.
   refreshPresence: () => announcePresence().catch(showSyncError),
@@ -415,9 +477,27 @@ onAuthStateChanged(auth, async user => {
       presenceValues = snap.val() || {};
       refreshActivePlayers();
     }, showSyncError));
+    let previousMaps = null;
     unsubscribers.push(onValue(ref(db, "players"), snap => {
       playersValues = snap.val() || {};
       refreshActivePlayers();
+      const nextMaps = new Map(Object.entries(playersValues).map(([uid, data]) => [uid, data?.map]));
+      if (previousMaps && !partyTravelInProgress) {
+        // Só mudanças de mapa de um personagem já acompanhado iniciam uma
+        // transição. Assim o login de alguém com progresso antigo não causa
+        // teleporte indevido de toda a campanha.
+        for (const [uid, doc] of Object.entries(playersValues)) {
+          if (!playerDocs.has(uid) || !previousMaps.has(uid)) continue;
+          if (previousMaps.get(uid) === doc?.map) continue;
+          const campaignMode = window.ValeCorvoApp?.getState?.().mapMode;
+          if ((doc.map === "dungeon" || doc.map === "overworld") &&
+              doc.map !== campaignMode) {
+            performPartyTravel(doc.map).catch(showSyncError);
+            break;
+          }
+        }
+      }
+      previousMaps = nextMaps;
     }, showSyncError));
   } else {
     // Jogadores também recebem a lista de personagens conectados.
