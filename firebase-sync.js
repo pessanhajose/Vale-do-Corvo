@@ -1,4 +1,4 @@
-import { auth, db } from "./firebase-config.js?v=2026-10-30.3";
+import { auth, db } from "./firebase-config.js?v=2026-10-30.4";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
   ref, get, set, update, onValue, onDisconnect, serverTimestamp
@@ -352,12 +352,17 @@ async function saveGmNotes(notes) {
 
 // A sala de chegada é a Câmara Ritualística (interior livre, longe das paredes).
 function partyArrivalSpots(count) {
-  const spots = [];
-  for (let y = 19; y <= 21; y++) for (let x = 20; x <= 25; x++) spots.push({x,y});
-  for (let y = 18; y <= 22; y++) for (let x = 19; x <= 26; x++) {
-    if (!spots.some(p => p.x === x && p.y === y)) spots.push({x,y});
-  }
-  return Array.from({length:count}, (_,i) => spots[i % spots.length]);
+  // Centros reais das sete salas; mesma ordem das posições do mapa.
+  const rooms = [
+    {x:20,y:10}, {x:21,y:20}, {x:15,y:24}, {x:8,y:31},
+    {x:17,y:36}, {x:38,y:24}, {x:34,y:31}
+  ];
+  const offsets = [[0,0],[1,0],[0,1],[-1,0],[0,-1],[1,1],[-1,-1]];
+  return Array.from({length:count}, (_,i) => {
+    const room = rooms[i % rooms.length];
+    const [dx,dy] = offsets[Math.floor(i / rooms.length) % offsets.length];
+    return {x:room.x+dx,y:room.y+dy};
+  });
 }
 let partyTravelInProgress = false;
 let pendingRequestedTravel = null;
@@ -403,7 +408,7 @@ async function requestPartyTravel(mode) {
   const state = window.ValeCorvoApp?.getState?.();
   const me = state?.tokens?.find(t => t.id === `player-${activeUser.uid}`);
   if (!me) return;
-  const spot = mode === "dungeon" ? {x:21,y:20} :
+  const spot = mode === "dungeon" ? partyArrivalSpots(1)[0] :
     {x:Math.max(0,Math.min(49,state.cryptEntrance?.x ?? 8)),y:Math.max(0,Math.min(39,state.cryptEntrance?.y ?? 8))};
   await tracked(() => set(ref(db, `players/${activeUser.uid}`), {
     uid:activeUser.uid, characterName:me.name, map:mode,
