@@ -84,6 +84,103 @@ async function tracked(fn) {
     if (!pendingSaves && !lastSaveFailed) setSyncStatus("ok");
   }
 }
+const clip = (v, n = 1500) => String(v ?? "").slice(0, n);
+function loadDisplayName(uid) {
+  if (displayNames.has(uid)) return Promise.resolve(displayNames.get(uid));
+  if (pendingNames.has(uid)) return pendingNames.get(uid);
+  const job = get(ref(db, `users/${uid}`))
+    .then(snap => {
+      const name = snap.exists() ? clip(snap.val()?.displayName, 60).trim() : "";
+      displayNames.set(uid, name);
+      return name;
+    })
+    .catch(() => "")
+    .finally(() => pendingNames.delete(uid));
+  pendingNames.set(uid, job);
+  return job;
+}
+function publishGmNotes() {
+  window.ValeCorvoApp?.setGmNotes?.(Object.fromEntries([...gmNotes].filter(([, v]) => v)));
+}
+// Segredos (respostas e consequências) ficam em gmNotes/<id>: as regras do banco só liberam
+// leitura e escrita para o mestre, então jogadores não conseguem ler nem pelo console.
+async function loadGmNotes(items) {
+  if (role !== "master" || !activeUser) return;
+  const missing = items.map(i => String(i.id)).filter(id => !gmNotes.has(id));
+  if (!missing.length) return;
+  await Promise.all(missing.map(async id => {
+    try {
+      const snap = await get(ref(db, `gmNotes/${id}`));
+      gmNotes.set(id, snap.exists() ? snap.val() : null);
+    } catch (error) { showSyncError(error); }
+  }));
+  publishGmNotes();
+}
+async function saveGmNotes(notes) {
+  if (role !== "master" || !activeUser || !notes || typeof notes !== "object") return;
+  for (const [id, n] of Object.entries(notes)) {
+    const clean = {
+      treasureId: String(id),
+      answer: clip(n?.answer), success: clip(n?.success), failure: clip(n?.failure),
+      reward: clip(n?.reward), notes: clip(n?.notes),
+      rewards: Array.isArray(n?.rewards) ? n.rewards.slice(0, 12).map(r => clip(r, 400)) : [],
+      updatedAt: serverTimestamp(), updatedBy: activeUser.uid
+    };
+    try {
+      await set(ref(db, `gmNotes/${id}`), clean);
+      gmNotes.set(String(id), { ...clean, updatedAt: Date.now() });
+    } catch (error) { showSyncError(error); throw error; }
+  }
+  publishGmNotes();
+}
+// O mestre só grava no mapa e só enxerga jogadores se o UID dele estiver em masters/ no banco.
+// Quando não está, tudo parece funcionar mas nada salva: este aviso deixa o motivo e o UID na tela.
+const OWNER_UID = "cPr3vPhG5XPS6ifk5NixuAjNui82";
+async function checkMasterAuthorization(user) {
+  const old = document.getElementById("master-auth-banner");
+  if (old) old.remove();
+  if (!user || role !== "master" || user.uid === OWNER_UID) return;
+  let authorized = false;
+  try {
+    const snap = await get(ref(db, `masters/${user.uid}`));
+    authorized = snap.val() === true;
+  } catch (error) { authorized = false; }
+  if (authorized) return;
+  const banner = document.createElement("div");
+  banner.id = "master-auth-banner";
+  banner.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:10000;background:#7f1d1d;color:#fee2e2;padding:10px 12px;font:13px/1.4 Inter,sans-serif;border-bottom:2px solid #f87171";
+  const text = document.createElement("div");
+  text.append("⚠ Este aparelho NÃO está autorizado como mestre no banco. Sem isso o progresso não é salvo e os jogadores que entram não aparecem. No Firebase, abra Realtime Database → masters e adicione este UID com valor true: ");
+  const code = document.createElement("code");
+  code.textContent = user.uid;
+  code.style.cssText = "background:#450a0a;padding:2px 6px;border-radius:4px;user-select:all;word-break:break-all";
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.textContent = "Copiar UID";
+  copy.style.cssText = "margin-left:8px;padding:2px 10px;border-radius:6px;border:1px solid #fca5a5;background:#991b1b;color:#fff;cursor:pointer";
+  copy.addEventListener("click", () => { navigator.clipboard?.writeText(user.uid).then(() => { copy.textContent = "Copiado ✓"; }); });
+  const close = document.createElement("button");
+  close.type = "button";
+  close.textContent = "✕";
+  close.style.cssText = "float:right;margin-left:8px;padding:0 8px;border:0;background:transparent;color:#fff;font-size:16px;cursor:pointer";
+  close.addEventListener("click", () => banner.remove());
+  text.append(code, copy);
+  banner.append(close, text);
+  document.body.appendChild(banner);
+}
+async function announcePresence() {
+  if (!activeUser) return;
+  const presenceRef = ref(db, `presence/${activeUser.uid}`);
+  try {
+    await onDisconnect(presenceRef).remove();
+    await set(presenceRef, { active: true, uid: activeUser.uid, updatedAt: serverTimestamp() });
+  } catch (error) {
+    showSyncError(error);
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") announcePresence();
+});
 function stateForRealtimeDatabase() {
   const state = window.ValeCorvoApp?.getState?.();
   if (!state) return null;
@@ -250,6 +347,7 @@ onAuthStateChanged(auth, async user => {
     showSyncError(error);
     return;
   }
+  checkMasterAuthorization(user);
 
   // Presença: jogadores só contam como ativos enquanto a conexão estiver viva.
   // O onDisconnect é consumido pelo servidor quando a conexão cai (aba em segundo plano, celular
