@@ -83,12 +83,12 @@
         .mist-layer-1 {
             animation: drift 18s ease-in-out infinite;
             pointer-events: none;
-            background: radial-gradient(ellipse at center, rgba(14, 19, 18, 0.88) 0%, rgba(10, 14, 13, 0.96) 70%, rgba(5, 8, 7, 0.99) 100%);
+            background: radial-gradient(ellipse at 30% 40%, rgba(200,210,215,.38), rgba(115,133,143,.62) 55%, rgba(60,76,91,.72) 100%);
         }
         .mist-layer-2 {
             animation: driftReverse 24s ease-in-out infinite;
             pointer-events: none;
-            background: linear-gradient(135deg, rgba(20, 28, 25, 0.7) 0%, rgba(12, 16, 15, 0.85) 50%, rgba(5, 8, 7, 0.95) 100%);
+            background: linear-gradient(135deg, rgba(190,205,215,.20), rgba(138,153,163,.48) 50%, rgba(85,102,117,.32));
         }
         .pulse-glow {
             animation: pulseGlow 2s infinite;
@@ -102,9 +102,9 @@
 body.firebase-player #player-view-controls{display:none!important}
 #treasure-panel{max-height:82vh;overflow:auto} .treasure-card{border:1px solid #51443b;background:rgba(20,20,25,.94);border-radius:.6rem;padding:.7rem;margin:.5rem 0}
 .treasure-marker{font: bold 12px Inter,sans-serif;text-align:center;}
-body.player-view #token-tray, body.player-view #sidebar, body.player-view #dungeon-quick-controls, body.player-view #fow-tools, body.player-view #btn-move-crypt, body.player-view #btn-grid, body.player-view #btn-mist, body.player-view #mist-density, body.player-view #btn-lore-toggle, body.player-view #treasure-panel, body.player-view #tool-token {display:none!important}
+body.player-view #tool-delete-token, body.firebase-player #tool-delete-token, body.player-view #token-tray, body.player-view #sidebar, body.player-view #dungeon-quick-controls, body.player-view #fow-tools, body.player-view #btn-move-crypt, body.player-view #btn-grid, body.player-view #btn-mist, body.player-view #mist-density, body.player-view #btn-lore-toggle, body.player-view #treasure-panel, body.player-view #tool-token {display:none!important}
 body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {display:none!important}
-body.player-view #mist-overlay {display:none!important}
+/* A névoa ambiental é compartilhada; não ocultar na visão dos jogadores. */
 @media(max-width:800px){#treasure-panel{left:3vw!important;right:3vw!important;width:auto!important;max-width:none!important} #player-view-controls{max-width:48vw;}}
 </style>
 
@@ -187,6 +187,9 @@ body.player-view #mist-overlay {display:none!important}
             <button id="tool-token" onclick="setTool('token')" class="px-3 py-1.5 rounded bg-gothic-800 hover:bg-gothic-700 border border-gothic-600 text-xs flex items-center gap-1.5 transition" title="Adicionar / Mover Tokens">
                 <i class="fa-solid fa-chess-rook"></i> <span class="hidden sm:inline">Tokens</span>
             </button>
+            <button id="tool-delete-token" type="button" onclick="setTool(currentTool === 'delete-token' ? 'pan' : 'delete-token')" class="px-3 py-1.5 rounded bg-gothic-800 hover:bg-red-950 border border-red-800 text-xs text-red-300 flex items-center gap-1.5 transition" title="Excluir um token do mestre: ative e toque no token no mapa">
+                <i class="fa-solid fa-trash-can"></i> <span class="hidden sm:inline">Excluir token</span>
+            </button>
             
             <!-- Dungeon Vision / Fog Tools (Visible in Dungeon mode) -->
             <div id="fow-tools" class="hidden flex items-center space-x-1 pl-1 border-l border-gothic-700">
@@ -218,10 +221,10 @@ body.player-view #mist-overlay {display:none!important}
         <div class="flex items-center space-x-2">
             <!-- Map Mode Switcher -->
             <div class="flex bg-gothic-950 p-1 rounded-lg border border-gothic-700">
-                <button id="btn-mode-overworld" onclick="switchMapMode('overworld')" class="px-2.5 py-1 rounded text-xs font-gothic font-bold bg-blood-900 text-corvo-gold border border-corvo-gold shadow">
+                <button id="btn-mode-overworld" onclick="beginPartyTransition('overworld')" class="px-2.5 py-1 rounded text-xs font-gothic font-bold bg-blood-900 text-corvo-gold border border-corvo-gold shadow">
                     <i class="fa-solid fa-mountain-sun"></i> <span class="hidden md:inline">Vale-Corvo</span>
                 </button>
-                <button id="btn-mode-dungeon" onclick="switchMapMode('dungeon')" class="px-2.5 py-1 rounded text-xs font-gothic font-bold text-gray-400 hover:text-white transition">
+                <button id="btn-mode-dungeon" onclick="beginPartyTransition('dungeon')" class="px-2.5 py-1 rounded text-xs font-gothic font-bold text-gray-400 hover:text-white transition">
                     <i class="fa-solid fa-dungeon"></i> <span class="hidden md:inline">Cripta</span>
                 </button>
             </div>
@@ -257,11 +260,13 @@ body.player-view #mist-overlay {display:none!important}
         <!-- Interactive Map Canvas Container -->
         <div id="map-container" class="flex-1 relative bg-gothic-950 overflow-hidden cursor-grab">
             <canvas id="tactical-map" class="absolute top-0 left-0"></canvas>
+            <!-- Nomes com fonte de tamanho fixo, legíveis nos celulares mesmo com zoom baixo. -->
+            <div id="player-name-labels" class="absolute inset-0 pointer-events-none overflow-hidden" style="z-index:9" aria-hidden="true"></div>
 
             <!-- Atmospheric Dark & Thick Mist Overlay Effect -->
-            <div id="mist-overlay" class="absolute inset-0 pointer-events-none mix-blend-multiply overflow-hidden transition-opacity duration-500" style="opacity: 0.85;">
+            <div id="mist-overlay" class="absolute inset-0 pointer-events-none overflow-hidden transition-opacity duration-500" style="opacity: 0.85; display: none; z-index:7;" aria-hidden="true">
                 <div class="absolute -inset-20 mist-layer-1"></div>
-                <div class="absolute -inset-20 mist-layer-2 mix-blend-darken"></div>
+                <div class="absolute -inset-20 mist-layer-2"></div>
             </div>
 
             <!-- Quick Dungeon Controls Floating Box (Only when in Dungeon mode) -->
@@ -330,6 +335,15 @@ body.player-view #mist-overlay {display:none!important}
                     </div>
                     <div draggable="true" ondragstart="selectTokenType(event, 'enemy', 'Besta da Névoa', '#7f1d1d')" onclick="spawnTokenAtCenter('enemy', 'Besta da Névoa', '#7f1d1d')" class="w-10 h-10 rounded-full bg-red-950 border-2 border-red-600 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Monstro: Besta da Névoa">
                         <i class="fa-solid fa-wolf-pack-battalion text-red-300 text-sm"></i>
+                    </div>
+                    <div role="button" tabindex="0" draggable="true" ondragstart="selectTokenType(event, 'enemy', 'Goblin', '#16a34a')" onclick="spawnTokenAtCenter('enemy', 'Goblin', '#16a34a')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" class="w-10 h-10 rounded-full bg-green-950 border-2 border-green-500 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Monstro: Goblin" aria-label="Adicionar token Goblin">
+                        <i class="fa-solid fa-khanda text-green-300 text-sm"></i>
+                    </div>
+                    <div role="button" tabindex="0" draggable="true" ondragstart="selectTokenType(event, 'enemy', 'Protetor', '#0d9488')" onclick="spawnTokenAtCenter('enemy', 'Protetor', '#0d9488')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" class="w-10 h-10 rounded-full bg-teal-950 border-2 border-teal-400 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Monstro: Protetor" aria-label="Adicionar token Protetor">
+                        <i class="fa-solid fa-shield text-teal-200 text-sm"></i>
+                    </div>
+                    <div role="button" tabindex="0" draggable="true" ondragstart="selectTokenType(event, 'enemy', 'Corvo', '#64748b')" onclick="spawnTokenAtCenter('enemy', 'Corvo', '#64748b')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" class="w-10 h-10 rounded-full bg-slate-950 border-2 border-slate-400 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Monstro: Corvo" aria-label="Adicionar token Corvo">
+                        <i class="fa-solid fa-crow text-slate-200 text-sm"></i>
                     </div>
                     <div draggable="true" ondragstart="selectTokenType(event, 'npc', 'Aldeão', '#64748b')" onclick="spawnTokenAtCenter('npc', 'Aldeão', '#64748b')" class="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-400 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="NPC: Camponês">
                         <i class="fa-solid fa-user text-slate-200 text-sm"></i>
@@ -648,7 +662,8 @@ body.player-view #mist-overlay {display:none!important}
         let startX, startY;
         let currentTool = 'pan'; // 'pan', 'token', 'reveal', 'hide'
         let showGridLines = true;
-        let showMistEffect = true;
+        let showMistEffect = false;
+        let mistDensity = 0.85;
 
         // POI definitions with grid coordinates
         const pois = [
@@ -691,12 +706,38 @@ body.player-view #mist-overlay {display:none!important}
         }
 
         function setTool(tool) {
+            if (tool === 'delete-token' && window.firebaseRole === 'player') return;
             currentTool = tool;
-            ['pan', 'token', 'reveal', 'hide'].forEach(t => {
+            ['pan', 'token', 'reveal', 'hide', 'delete-token'].forEach(t => {
                 const el = document.getElementById(`tool-${t}`);
-                if (el) el.classList.toggle('bg-blood-900', tool === t);
+                if (el) {
+                    el.classList.toggle('bg-blood-900', tool === t && t !== 'delete-token');
+                    el.classList.toggle('bg-red-900', tool === t && t === 'delete-token');
+                    el.setAttribute('aria-pressed', String(tool === t));
+                }
             });
-            container.style.cursor = (tool === 'pan') ? 'grab' : ((tool === 'reveal' || tool === 'hide') ? 'cell' : 'crosshair');
+            container.style.cursor = (tool === 'pan') ? 'grab' : ((tool === 'reveal' || tool === 'hide' || tool === 'delete-token') ? 'crosshair' : 'crosshair');
+        }
+
+        function deleteTokenAt(gridX, gridY, mouseX, mouseY, isTouch) {
+            if (window.firebaseRole !== 'master') return;
+            const candidates = tokens.filter(t => t.type !== 'hero'
+                && t.map === currentMapMode);
+            // Seleciona primeiro o token na célula; se for toque, permite pequeno desvio.
+            let target = [...candidates].reverse().find(t => t.x === gridX && t.y === gridY);
+            if (!target && isTouch) {
+                const fx = mouseX / tileSize, fy = mouseY / tileSize;
+                target = candidates.map(t => ({t, d: Math.hypot(t.x + 0.5 - fx, t.y + 0.5 - fy)}))
+                    .filter(o => o.d <= 0.85).sort((a, b) => a.d - b.d)[0]?.t;
+            }
+            if (!target) return;
+            if (!confirm(`Excluir apenas o token "${target.name}"?`)) return;
+            tokens = tokens.filter(t => t.id !== target.id);
+            populatePlayerSelects();
+            drawMap();
+            // A sessão grava apenas os tokens criados pelo mestre; os heróis permanecem.
+            window.ValeCorvoSync?.queueSessionSave();
+            setTool('pan');
         }
 
         // Apply Fog of War Paint
@@ -1018,6 +1059,37 @@ body.player-view #mist-overlay {display:none!important}
             renderTreasurePanel();drawMap();window.ValeCorvoSync?.saveTreasures(treasures);
         }
 
+        // Nomes de TODOS os jogadores, inclusive do próprio usuário, em pixels da tela.
+        // A névoa da cripta continua respeitada para os jogadores.
+        function updatePlayerNameLabels() {
+            const layer = document.getElementById('player-name-labels');
+            if (!layer) return;
+            const fragment = document.createDocumentFragment();
+            const width = container.clientWidth, height = container.clientHeight;
+            for (const token of tokens) {
+                if (token.type !== 'hero' || (token.map && token.map !== currentMapMode)) continue;
+                if (window.firebaseRole === 'player' && currentMapMode === 'dungeon'
+                    && dungeonFog[token.x]?.[token.y] !== 1) continue;
+                const x = offsetX + (token.x + 0.5) * tileSize * scale;
+                const y = offsetY + (token.y + 0.5) * tileSize * scale;
+                if (x < -90 || x > width + 90 || y < -45 || y > height + 45) continue;
+                const label = document.createElement('span');
+                const text = String(token.displayName || token.name || 'Jogador').trim();
+                label.textContent = text || 'Jogador';
+                label.title = text;
+                label.style.cssText = 'position:absolute;transform:translate(-50%,-100%);'
+                    + 'white-space:nowrap;max-width:160px;overflow:hidden;text-overflow:ellipsis;'
+                    + 'padding:3px 7px;border-radius:5px;background:rgba(9,10,15,.94);'
+                    + 'border:1px solid ' + (token.color || '#d4af37') + ';'
+                    + 'color:#fef3c7;font:700 13px Inter,Arial,sans-serif;'
+                    + 'line-height:18px;text-shadow:0 1px 2px #000;box-shadow:0 2px 6px #0009;';
+                label.style.left = x + 'px';
+                label.style.top = (y - Math.max(10, tileSize * scale * 0.38) - 5) + 'px';
+                fragment.appendChild(label);
+            }
+            layer.replaceChildren(fragment);
+        }
+
         function drawMap() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -1037,8 +1109,8 @@ body.player-view #mist-overlay {display:none!important}
             // Draw Tokens
             tokens.forEach(token => {
                 if (token.map && token.map !== currentMapMode) return;
-                // Cada jogador vê somente o próprio token. O mestre vê todos os jogadores ativos.
-                if (window.firebaseRole === 'player' && token.type === 'hero' && token.name !== window.firebaseCharacterName) return;
+                // Todos os jogadores veem os heróis conectados; o UID diferencia contas
+                // mesmo quando duas pessoas escolhem a mesma classe. Só o dono pode movê-los.
                 // In dungeon mode, only draw tokens if cell is revealed or GM is viewing
                 const isRevealed = (currentMapMode === 'overworld') || (dungeonFog[token.x] && dungeonFog[token.x][token.y] === 1);
                 
@@ -1076,24 +1148,9 @@ body.player-view #mist-overlay {display:none!important}
                 ctx.textBaseline = 'middle';
                 ctx.fillText(token.name.substring(0, 3).toUpperCase(), tx, ty);
 
-                // Nome de exibição escolhido pelo jogador, acima do token, para identificar quem é quem.
-                if (token.type === 'hero' && token.displayName) {
-                    const label = token.displayName.length > 16 ? token.displayName.slice(0, 15) + '…' : token.displayName;
-                    ctx.font = `bold ${Math.max(10, tileSize * 0.3)}px Inter, sans-serif`;
-                    const lw = ctx.measureText(label).width + 10, lh = Math.max(14, tileSize * 0.4);
-                    const lx = tx - lw / 2, ly = ty - radius - lh - 3;
-                    ctx.beginPath();
-                    if (ctx.roundRect) ctx.roundRect(lx, ly, lw, lh, 4); else ctx.rect(lx, ly, lw, lh);
-                    ctx.fillStyle = 'rgba(10,10,14,0.82)';
-                    ctx.fill();
-                    ctx.lineWidth = 1;
-                    ctx.strokeStyle = token.color;
-                    ctx.stroke();
-                    ctx.fillStyle = '#fef3c7';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(label, tx, ly + lh / 2 + 0.5);
-                }
+                // Os nomes ficam em elementos HTML independentes do zoom do canvas.
+                // Isso evita etiquetas minúsculas em telas de celular.
+
             });
 
             // Draw Fog of War in Dungeon Mode
@@ -1104,6 +1161,7 @@ body.player-view #mist-overlay {display:none!important}
             drawTreasureMarkers();
 
             ctx.restore();
+            updatePlayerNameLabels();
             updateScaleBar();
         }
 
@@ -1231,43 +1289,62 @@ body.player-view #mist-overlay {display:none!important}
         }
 
         // Dungeon Renderer
+        // A MESMA geometria alimenta desenho, spawn e colisão: não há
+        // coordenadas de "sala" que o mapa considere rocha.
+        function dungeonFloorKind(x, y) {
+            if (!Number.isInteger(x) || !Number.isInteger(y) ||
+                x < 0 || x >= GRID_COLS || y < 0 || y >= GRID_ROWS) return null;
+            const inside = (x1, y1, x2, y2) =>
+                x >= x1 && x <= x2 && y >= y1 && y <= y2;
+            if (inside(24, 2, 32, 7)) return 'crypt';
+            if (inside(17, 8, 26, 13)) return 'prison';
+            if (inside(23, 7, 26, 10) || inside(23, 12, 30, 15) ||
+                inside(27, 14, 30, 19)) return 'corridor';
+            if (inside(18, 17, 27, 23)) return 'ritual';
+            if (inside(10, 22, 21, 26)) return 'prison';
+            if (inside(10, 26, 13, 29) || inside(5, 28, 13, 34)) return 'corridor';
+            if (inside(10, 34, 32, 38) || inside(28, 27, 38, 35)) return 'crypt';
+            if (inside(32, 22, 44, 26)) return 'prison';
+            if (inside(30, 23, 33, 25) || inside(27, 24, 31, 29)) return 'corridor';
+            return null;
+        }
+        function isDungeonFloor(x, y) {
+            return dungeonFloorKind(x, y) !== null;
+        }
+        // Câmara Ritualística: interior sem parede, com espaço para o grupo.
+        function partySpawnPositions(count) {
+            const places = [];
+            for (let y = 19; y <= 21; y++)
+                for (let x = 20; x <= 25; x++)
+                    if (isDungeonFloor(x, y)) places.push({ x, y });
+            for (let y = 18; y <= 22; y++)
+                for (let x = 19; x <= 26; x++)
+                    if (isDungeonFloor(x, y) && !places.some(p => p.x === x && p.y === y))
+                        places.push({ x, y });
+            return Array.from({ length: count }, (_, index) =>
+                places[index % places.length] || { x: 21, y: 20 });
+        }
+        // Percorre o trajeto célula a célula: não é permitido atravessar
+        // paredes arrastando o token de um lado da sala até o outro.
+        function dungeonPathIsClear(x0, y0, x1, y1) {
+            if (!isDungeonFloor(x0, y0) || !isDungeonFloor(x1, y1)) return false;
+            const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+            for (let i = 1; i <= steps; i++) {
+                const x = Math.round(x0 + (x1 - x0) * i / steps);
+                const y = Math.round(y0 + (y1 - y0) * i / steps);
+                if (!isDungeonFloor(x, y)) return false;
+            }
+            return true;
+        }
+
         function drawDungeonTerrain() {
             for (let x = 0; x < GRID_COLS; x++) {
                 for (let y = 0; y < GRID_ROWS; y++) {
                     const px = x * tileSize;
                     const py = y * tileSize;
 
-                    // Planta da cripta redesenhada seguindo o esboço enviado:
-                    // salas irregulares ligadas por corredores em zigue-zague.
-                    let isRoom = false;
-                    let isWall = false;
-                    let isSpecial = '';
-
-                    const inRect = (x1, y1, x2, y2) => x >= x1 && x <= x2 && y >= y1 && y <= y2;
-
-                    // Sala superior e braço noroeste.
-                    if (inRect(24, 2, 32, 7)) { isRoom = true; isSpecial = 'crypt'; }
-                    else if (inRect(17, 8, 26, 13)) { isRoom = true; isSpecial = 'prison'; }
-
-                    // Ligação superior em zigue-zague até à câmara central.
-                    else if (inRect(23, 7, 26, 10) ||
-                             inRect(23, 12, 30, 15) ||
-                             inRect(27, 14, 30, 19)) isRoom = true;
-
-                    // Câmara central.
-                    else if (inRect(18, 17, 27, 23)) { isRoom = true; isSpecial = 'ritual'; }
-
-                    // Ala oeste e sala inferior esquerda.
-                    else if (inRect(10, 22, 21, 26)) { isRoom = true; isSpecial = 'prison'; }
-                    else if (inRect(10, 26, 13, 29) || inRect(5, 28, 13, 34)) isRoom = true;
-
-                    // Grande salão inferior, ligado à sala central e à ala sudeste.
-                    else if (inRect(10, 34, 32, 38)) { isRoom = true; isSpecial = 'crypt'; }
-                    else if (inRect(28, 27, 38, 35)) { isRoom = true; isSpecial = 'crypt'; }
-
-                    // Corredor leste e câmara oriental.
-                    else if (inRect(32, 22, 44, 26)) { isRoom = true; isSpecial = 'prison'; }
-                    else if (inRect(30, 23, 33, 25) || inRect(27, 24, 31, 29)) isRoom = true;
+                    const isSpecial = dungeonFloorKind(x, y);
+                    const isRoom = isSpecial !== null;
 
                     if (isRoom) {
                         if (isSpecial === 'ritual') ctx.fillStyle = '#494052'; // Câmara ritual mais clara
@@ -1299,6 +1376,31 @@ body.player-view #mist-overlay {display:none!important}
                     }
                 }
             }
+
+            // Paredes de pedra elevadas ao redor de todo o piso escavado.
+            // Corredores abertos continuam transitáveis; rochas são obstáculos.
+            ctx.save();
+            ctx.lineJoin = 'round';
+            for (let x = 0; x < GRID_COLS; x++) {
+                for (let y = 0; y < GRID_ROWS; y++) {
+                    if (!isDungeonFloor(x, y)) continue;
+                    const px = x * tileSize, py = y * tileSize;
+                    const edges = [];
+                    if (!isDungeonFloor(x, y - 1)) edges.push([px, py, px + tileSize, py]);
+                    if (!isDungeonFloor(x + 1, y)) edges.push([px + tileSize, py, px + tileSize, py + tileSize]);
+                    if (!isDungeonFloor(x, y + 1)) edges.push([px, py + tileSize, px + tileSize, py + tileSize]);
+                    if (!isDungeonFloor(x - 1, y)) edges.push([px, py, px, py + tileSize]);
+                    for (const [x1, y1, x2, y2] of edges) {
+                        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                        ctx.lineWidth = 7; ctx.strokeStyle = '#080c12'; ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                        ctx.lineWidth = 4; ctx.strokeStyle = '#9aa6b6'; ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                        ctx.lineWidth = 1.5; ctx.strokeStyle = '#d7dee8'; ctx.stroke();
+                    }
+                }
+            }
+            ctx.restore();
 
             // Dungeon Decorative Elements (Torches, Sarcophagi, Ritual Circles)
             // Elemento decorativo do salão final da cripta, longe da entrada.
@@ -1365,36 +1467,33 @@ body.player-view #mist-overlay {display:none!important}
             }
         }
 
-        // Cada herói começa isolado em uma sala aleatória diferente.
-        // A Câmara do Altar é excluída para preservar o encontro final.
+        // Todos os jogadores conectados chegam à MESMA sala da cripta.
         function placeHeroesInRandomCryptRoom() {
-            const rooms = [
-                { name: 'Cela Antiga', x1: 17, y1: 8, x2: 26, y2: 13 },
-                { name: 'Câmara Ritualística', x1: 18, y1: 17, x2: 27, y2: 23 },
-                { name: 'Ala Oeste', x1: 10, y1: 22, x2: 21, y2: 26 },
-                { name: 'Câmara Inferior Oeste', x1: 5, y1: 28, x2: 13, y2: 34 },
-                { name: 'Grande Salão Inferior', x1: 10, y1: 34, x2: 32, y2: 38 },
-                { name: 'Câmara dos Sarcófagos', x1: 32, y1: 22, x2: 44, y2: 26 },
-                { name: 'Câmara Sudeste', x1: 28, y1: 27, x2: 38, y2: 35 }
-            ];
-            const heroes = tokens.filter(t => t.type === 'hero');
-            // Embaralha as salas e distribui uma sala diferente para cada herói.
-            const shuffledRooms = [...rooms].sort(() => Math.random() - 0.5);
+            const heroes = tokens.filter(t => t.type === 'hero')
+                .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+            const positions = partySpawnPositions(heroes.length);
             heroes.forEach((hero, i) => {
-                const room = shuffledRooms[i % shuffledRooms.length];
-                // Escolhe uma posição interna aleatória, mantendo distância das paredes.
-                const minX = room.x1 + 1;
-                const maxX = Math.max(minX, room.x2 - 1);
-                const minY = room.y1 + 1;
-                const maxY = Math.max(minY, room.y2 - 1);
-                hero.x = minX + Math.floor(Math.random() * (maxX - minX + 1));
-                hero.y = minY + Math.floor(Math.random() * (maxY - minY + 1));
+                hero.x = positions[i].x;
+                hero.y = positions[i].y;
                 hero.map = 'dungeon';
             });
-            // Reinicia a névoa e revela apenas o entorno de cada herói.
             initDungeonFog(0);
-            updateTorchVision();
-            return heroes.map((hero, i) => ({ hero: hero.name || `Jogador ${i + 1}`, sala: shuffledRooms[i % shuffledRooms.length].name }));
+            return heroes.map(hero => ({ hero: hero.name, sala: 'Câmara Ritualística' }));
+        }
+        function beginPartyTransition(mode) {
+            if (window.firebaseRole !== 'player' && window.firebaseRole !== 'master') return;
+            if (mode === 'dungeon') placeHeroesInRandomCryptRoom();
+            else {
+                tokens.filter(t => t.type === 'hero').forEach((t, i) => {
+                    t.x = Math.min(GRID_COLS - 1, cryptEntrance.x + (i % 2));
+                    t.y = Math.min(GRID_ROWS - 1, cryptEntrance.y + Math.floor(i / 2));
+                    t.map = 'overworld';
+                });
+            }
+            switchMapMode(mode);
+            draggedTokenId = null;
+            isDragging = false;
+            window.ValeCorvoSync?.requestPartyTravel?.(mode);
         }
 
         // Mouse Interactions for Pan, Tokens, and Fog Painting
@@ -1408,6 +1507,13 @@ body.player-view #mist-overlay {display:none!important}
             const mouseY = (e.clientY - rect.top - offsetY) / scale;
             const gridX = Math.floor(mouseX / tileSize);
             const gridY = Math.floor(mouseY / tileSize);
+
+            if (currentTool === 'delete-token') {
+                isDragging = false;
+                draggedTokenId = null;
+                deleteTokenAt(gridX, gridY, mouseX, mouseY, isTouch);
+                return;
+            }
 
             if (movingCryptEntrance && currentMapMode === 'overworld' && gridX >= 0 && gridX < GRID_COLS && gridY >= 0 && gridY < GRID_ROWS) {
                 cryptEntrance = { x: gridX, y: gridY };
@@ -1473,26 +1579,25 @@ body.player-view #mist-overlay {display:none!important}
                 if (gridX >= 0 && gridX < GRID_COLS && gridY >= 0 && gridY < GRID_ROWS) {
                     const token = tokens.find(t => t.id === draggedTokenId);
                     if (token) {
+                        if (currentMapMode === 'dungeon' &&
+                            !dungeonPathIsClear(token.x, token.y, gridX, gridY)) return;
                         token.x = gridX;
                         token.y = gridY;
 
                         // Recalcula a visão imediatamente quando um token se move.
                         if (currentMapMode === 'dungeon' && token.type === 'hero') updateTorchVision();
 
-                        // Check if stepping on Dungeon Entrance in Castle (8,8)
-                        if (currentMapMode === 'overworld' && Math.abs(gridX - cryptEntrance.x) <= 1 && Math.abs(gridY - cryptEntrance.y) <= 1) {
-                            // Cada entrada coloca o grupo em uma sala aleatória válida da cripta.
-                            placeHeroesInRandomCryptRoom();
-                            switchMapMode('dungeon');
+                        // Um herói atravessando a entrada/saída leva o grupo.
+                        if (token.type === 'hero' && currentMapMode === 'overworld' &&
+                            Math.abs(gridX - cryptEntrance.x) <= 1 &&
+                            Math.abs(gridY - cryptEntrance.y) <= 1) {
+                            beginPartyTransition('dungeon');
+                            return;
                         }
-                        // Ao sair, devolve os heróis para a entrada reposicionada no mapa do vale.
-                        else if (currentMapMode === 'dungeon' && gridX >= 24 && gridX <= 26 && gridY >= 36 && gridY <= 38) {
-                            tokens.filter(t => t.type === 'hero').forEach((t, i) => {
-                                t.x = Math.min(GRID_COLS - 1, cryptEntrance.x + (i % 2));
-                                t.y = Math.min(GRID_ROWS - 1, cryptEntrance.y + Math.floor(i / 2));
-                                t.map = 'overworld';
-                            });
-                            switchMapMode('overworld');
+                        if (token.type === 'hero' && currentMapMode === 'dungeon' &&
+                            gridX >= 24 && gridX <= 26 && gridY >= 36 && gridY <= 38) {
+                            beginPartyTransition('overworld');
+                            return;
                         }
 
                         drawMap();
@@ -1602,16 +1707,33 @@ body.player-view #mist-overlay {display:none!important}
             return letter;
         }
 
+        function uniqueMapTokenId() {
+            return 'token-' + (globalThis.crypto?.randomUUID?.() ||
+                Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
+        }
+        function validTokenSpawn(x, y) {
+            if (currentMapMode !== 'dungeon' || isDungeonFloor(x, y)) return {x, y};
+            // Evita monstros nascerem dentro da rocha no mapa da cripta.
+            for (let radius = 1; radius < Math.max(GRID_COLS, GRID_ROWS); radius++) {
+                for (let dy = -radius; dy <= radius; dy++)
+                    for (let dx = -radius; dx <= radius; dx++)
+                        if (isDungeonFloor(x + dx, y + dy))
+                            return {x: x + dx, y: y + dy};
+            }
+            return {x:21, y:20};
+        }
         function spawnTokenAtCenter(type, name, color) {
             const centerX = Math.floor(GRID_COLS / 2);
             const centerY = Math.floor(GRID_ROWS / 2);
+            if (window.firebaseRole === 'player') return;
+            const pos = validTokenSpawn(
+                centerX + Math.floor(Math.random() * 3) - 1,
+                centerY + Math.floor(Math.random() * 3) - 1
+            );
             const newToken = {
-                id: Date.now(),
-                type: type,
-                name: name,
-                color: color,
-                x: centerX + Math.floor(Math.random() * 3) - 1,
-                y: centerY + Math.floor(Math.random() * 3) - 1,
+                id: uniqueMapTokenId(),
+                type, name, color,
+                x: pos.x, y: pos.y,
                 map: currentMapMode
             };
             tokens.push(newToken);
@@ -1637,14 +1759,13 @@ body.player-view #mist-overlay {display:none!important}
             const gridX = Math.floor(mouseX / tileSize);
             const gridY = Math.floor(mouseY / tileSize);
 
+            if (window.firebaseRole === 'player') return;
             if (gridX >= 0 && gridX < GRID_COLS && gridY >= 0 && gridY < GRID_ROWS) {
+                const pos = validTokenSpawn(gridX, gridY);
                 tokens.push({
-                    id: Date.now(),
-                    type,
-                    name,
-                    color,
-                    x: gridX,
-                    y: gridY,
+                    id: uniqueMapTokenId(),
+                    type, name, color,
+                    x: pos.x, y: pos.y,
                     map: currentMapMode
                 });
                 populatePlayerSelects();
@@ -1766,16 +1887,46 @@ body.player-view #mist-overlay {display:none!important}
             drawMap();
         }
 
-        function toggleMist() {
-            showMistEffect = !showMistEffect;
+        // A névoa ambiental é compartilhada via sessions/main; não é a névoa
+        // de guerra da cripta (dungeonFog), que mantém suas regras próprias.
+        function renderMistState() {
             const overlay = document.getElementById('mist-overlay');
-            overlay.style.display = showMistEffect ? '' : 'none';
-            document.getElementById('btn-mist').classList.toggle('text-emerald-400', showMistEffect);
-            document.getElementById('btn-mist').classList.toggle('text-gray-400', !showMistEffect);
+            if (overlay) {
+                overlay.style.display = showMistEffect ? '' : 'none';
+                overlay.style.opacity = String(mistDensity);
+                overlay.setAttribute('aria-hidden', String(!showMistEffect));
+            }
+            const button = document.getElementById('btn-mist');
+            if (button) {
+                button.classList.toggle('text-emerald-400', showMistEffect);
+                button.classList.toggle('text-gray-400', !showMistEffect);
+                button.setAttribute('aria-pressed', String(showMistEffect));
+            }
+            const slider = document.getElementById('mist-density');
+            if (slider && slider.value !== String(mistDensity)) slider.value = String(mistDensity);
+        }
+
+        // Atualiza apenas a névoa, sem sobrescrever os dados do mapa.
+        function applySharedMist(settings) {
+            if (!settings || typeof settings !== 'object') return;
+            showMistEffect = settings.enabled === true;
+            mistDensity = Number.isFinite(settings.density)
+                ? Math.max(0.2, Math.min(0.95, settings.density)) : 0.85;
+            renderMistState();
+        }
+
+        function toggleMist() {
+            if (window.firebaseRole === 'player') return;
+            showMistEffect = !showMistEffect;
+            renderMistState();
+            window.ValeCorvoSync?.saveMistSettings?.({enabled: showMistEffect, density: mistDensity});
         }
 
         function adjustMistDensity(value) {
-            document.getElementById('mist-overlay').style.opacity = String(Number(value));
+            if (window.firebaseRole === 'player') return;
+            mistDensity = Math.max(0.2, Math.min(0.95, Number(value) || 0.85));
+            renderMistState();
+            window.ValeCorvoSync?.saveMistSettings?.({enabled: showMistEffect, density: mistDensity});
         }
 
         function updateScaleBar() {
@@ -1796,6 +1947,9 @@ body.player-view #mist-overlay {display:none!important}
 
         // Bridge controlado para sincronização Firebase; as variáveis do mapa continuam privadas neste script.
         window.ValeCorvoApp = {
+            applyMistSettings(settings) {
+                applySharedMist(settings);
+            },
             getState() {
                 return {
                     tokens: tokens.map(t => ({...t})),
@@ -1803,7 +1957,9 @@ body.player-view #mist-overlay {display:none!important}
                     mapMode: currentMapMode,
                     cryptEntrance: {...cryptEntrance},
                     visionRadius,
-                    magicVisionEnabled
+                    magicVisionEnabled,
+                    mistEnabled: showMistEffect,
+                    mistDensity
                 };
             },
             applyState(state) {
@@ -1817,10 +1973,13 @@ body.player-view #mist-overlay {display:none!important}
                     tokens = [...sharedTokens, ...currentHeroes];
                 }
                 if (Array.isArray(state.dungeonFog) && state.dungeonFog.length === GRID_COLS) dungeonFog = state.dungeonFog.map(col => [...col]);
-                if (state.mapMode === 'overworld' || state.mapMode === 'dungeon') currentMapMode = state.mapMode;
+                if ((state.mapMode === 'overworld' || state.mapMode === 'dungeon') &&
+                    state.mapMode !== currentMapMode) switchMapMode(state.mapMode);
                 if (state.cryptEntrance && Number.isInteger(state.cryptEntrance.x) && Number.isInteger(state.cryptEntrance.y)) cryptEntrance = {...state.cryptEntrance};
                 if (Number.isInteger(state.visionRadius)) visionRadius = Math.max(2, Math.min(12, state.visionRadius));
                 if (typeof state.magicVisionEnabled === 'boolean') magicVisionEnabled = state.magicVisionEnabled;
+                // A névoa ambiental usa sessions/mist, independente das demais alterações
+                // de mapa, evitando que snapshots antigos a liguem/desliguem indevidamente.
                 const radiusInput = document.getElementById('vision-radius');
                 if (radiusInput) radiusInput.value = String(visionRadius);
                 const radiusLabel = document.getElementById('vision-radius-label');
@@ -1847,6 +2006,12 @@ body.player-view #mist-overlay {display:none!important}
                     token.y = Math.max(0, Math.min(GRID_ROWS - 1, p.y));
                 }
                 token.map = p.map === 'dungeon' ? 'dungeon' : 'overworld';
+                // Posições antigas gravadas dentro da rocha são exibidas num
+                // ponto seguro, até que o próximo movimento salve a correção.
+                if (token.map === 'dungeon' && !isDungeonFloor(token.x, token.y)) {
+                    token.x = 21;
+                    token.y = 20;
+                }
                 return token;
             },
             applyPlayerDocs(docs) {
@@ -1893,7 +2058,10 @@ body.player-view #mist-overlay {display:none!important}
                 drawMap();
             },
             canMoveToken(token) {
-                return window.firebaseRole !== 'player' || (token?.type === 'hero' && token.name === window.firebaseCharacterName);
+                if (window.firebaseRole !== 'player') return true;
+                // Jogador só pode arrastar o token associado à própria conta Firebase.
+                return token?.type === 'hero' &&
+                    heroUid(token) === window.firebaseUser?.uid;
             }
         };
 

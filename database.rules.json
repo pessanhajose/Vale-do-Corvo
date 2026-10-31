@@ -28,7 +28,7 @@
       }
     },
     "players": {
-      ".read": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)",
+      ".read": "auth != null",
       "$uid": {
         ".read": "auth != null && (auth.uid === $uid || (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true))",
         ".write": "auth != null && ((auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true) || (auth.uid === $uid && newData.child('uid').val() === auth.uid && (!data.exists() || newData.child('characterName').val() === data.child('characterName').val())))",
@@ -93,7 +93,7 @@
       }
     },
     "presence": {
-      ".read": "auth != null && (auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)",
+      ".read": "auth != null",
       "$uid": {
         ".read": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)",
         ".write": "auth != null && (auth.uid === $uid || auth.uid === 'cPr3vPhG5XPS6ifk5NixuAjNui82' || root.child('masters').child(auth.uid).val() === true)",

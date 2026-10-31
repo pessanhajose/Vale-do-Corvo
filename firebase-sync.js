@@ -1,7 +1,7 @@
 import { auth, db } from "./firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
-  ref, get, set, onValue, onDisconnect, serverTimestamp
+  ref, get, set, update, onValue, onDisconnect, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
 let activeUser = null;
@@ -191,6 +191,10 @@ function stateForRealtimeDatabase() {
     cryptEntrance: JSON.parse(JSON.stringify(state.cryptEntrance)),
     visionRadius: state.visionRadius,
     magicVisionEnabled: state.magicVisionEnabled,
+    // Névoa ambiental: liga/desliga e intensidade para mestre e jogadores.
+    mistEnabled: state.mistEnabled === true,
+    mistDensity: Number.isFinite(state.mistDensity)
+      ? Math.max(0.2, Math.min(0.95, state.mistDensity)) : 0.85,
     updatedAt: serverTimestamp(),
     updatedBy: activeUser?.uid || null
   };
@@ -206,6 +210,18 @@ async function saveSessionNow() {
     throw error;
   }
 }
+// Névoa ambiental em nó isolado: alternar não regrava tokens, mapa ou progresso.
+async function saveMistSettings(settings) {
+  if (role !== "master" || !activeUser || !settings) return;
+  await tracked(() => set(ref(db, "sessions/mist"), {
+    enabled: settings.enabled === true,
+    density: Number.isFinite(settings.density)
+      ? Math.max(0.2, Math.min(0.95, settings.density)) : 0.85,
+    updatedAt: serverTimestamp(),
+    updatedBy: activeUser.uid
+  }));
+}
+
 function queueSessionSave() {
   if (role !== "master" || !activeUser || applyingRemoteState) return;
   if (saveTimer) clearTimeout(saveTimer);
@@ -314,9 +330,151 @@ async function migrateOldTreasures() {
   }));
   if (found.length) await saveTreasures(found);
 }
+
+/** Publica a presença do usuário na conexão atual. */
+async function announcePresence() {
+  const user = activeUser;
+  if (!user) return;
+  const presenceRef = ref(db, `presence/${user.uid}`);
+  await onDisconnect(presenceRef).remove();
+  if (activeUser?.uid !== user.uid) return;
+  // O primeiro onAuthStateChanged pode ocorrer antes de o formulário salvar o
+  // displayName; busque o perfil próprio para evitar publicar um nome vazio.
+  let name = String(user.displayName || "").trim();
+  try {
+    const profile = await get(ref(db, `users/${user.uid}`));
+    if (profile.exists() && typeof profile.val()?.displayName === "string") {
+      name = profile.val().displayName.trim() || name;
+    }
+  } catch (error) {
+    console.warn("[Vale-do-Corvo] Nome de perfil indisponível:", error);
+  }
+  if (activeUser?.uid !== user.uid) return;
+  await set(presenceRef, {
+    uid: user.uid,
+    active: true,
+    displayName: name.slice(0, 60),
+    updatedAt: serverTimestamp()
+  });
+}
+
+/** Busca e memoriza o nome público do perfil, sem leituras simultâneas duplicadas. */
+async function loadDisplayName(uid) {
+  if (!uid) return "";
+  if (displayNames.has(uid)) return displayNames.get(uid) || "";
+  if (pendingNames.has(uid)) return pendingNames.get(uid);
+  const request = get(ref(db, `users/${uid}`))
+    .then(snap => {
+      const value = snap.exists() ? snap.val() : null;
+      const name = typeof value?.displayName === "string" ? value.displayName.trim() : "";
+      displayNames.set(uid, name);
+      return name;
+    })
+    .catch(error => {
+      showSyncError(error);
+      return "";
+    })
+    .finally(() => pendingNames.delete(uid));
+  pendingNames.set(uid, request);
+  return request;
+}
+
+/** Lê cada segredo individualmente, respeitando as regras de gmNotes/{id}. */
+async function loadGmNotes(items) {
+  if (role !== "master" || !activeUser) {
+    window.ValeCorvoApp?.setGmNotes?.({});
+    return;
+  }
+  const ids = [...new Set((Array.isArray(items) ? items : [])
+    .map(item => item?.id)
+    .filter(id => id !== undefined && id !== null)
+    .map(String)
+    .filter(id => /^[A-Za-z0-9_-]{1,80}$/.test(id)))];
+  const pairs = await Promise.all(ids.map(async id => {
+    const snap = await get(ref(db, `gmNotes/${id}`));
+    return snap.exists() ? [id, snap.val()] : null;
+  }));
+  window.ValeCorvoApp?.setGmNotes?.(Object.fromEntries(pairs.filter(Boolean)));
+}
+
+/** Grava segredos por item para respeitar as regras existentes em gmNotes/{id}. */
+async function saveGmNotes(notes) {
+  if (role !== "master" || !activeUser || !notes || typeof notes !== "object" || Array.isArray(notes)) return;
+  const writes = Object.entries(notes)
+    .filter(([id, note]) => /^[A-Za-z0-9_-]{1,80}$/.test(id) && note && typeof note === "object")
+    .map(([id, note]) => set(ref(db, `gmNotes/${id}`), JSON.parse(JSON.stringify(note))));
+  await Promise.all(writes);
+  window.ValeCorvoApp?.setGmNotes?.(notes);
+}
+
+// A sala de chegada é a Câmara Ritualística (interior livre, longe das paredes).
+function partyArrivalSpots(count) {
+  const spots = [];
+  for (let y = 19; y <= 21; y++) for (let x = 20; x <= 25; x++) spots.push({x,y});
+  for (let y = 18; y <= 22; y++) for (let x = 19; x <= 26; x++) {
+    if (!spots.some(p => p.x === x && p.y === y)) spots.push({x,y});
+  }
+  return Array.from({length:count}, (_,i) => spots[i % spots.length]);
+}
+let partyTravelInProgress = false;
+let pendingRequestedTravel = null;
+// Mestre é o único autorizado a atualizar os documentos de todos os jogadores.
+// A atualização multipath é atômica: o mapa e todos os heróis mudam juntos.
+async function performPartyTravel(mode) {
+  if (role !== "master" || !activeUser || partyTravelInProgress) return;
+  if (mode !== "dungeon" && mode !== "overworld") return;
+  partyTravelInProgress = true;
+  try {
+    const current = window.ValeCorvoApp?.getState?.();
+    const group = [...playerDocs.entries()].sort(([a],[b]) => a.localeCompare(b));
+    if (!group.length) return;
+    const positions = partyArrivalSpots(group.length);
+    const updates = {};
+    for (let i = 0; i < group.length; i++) {
+      const [uid, doc] = group[i];
+      const spot = mode === "dungeon" ? positions[i] :
+        {x:Math.min(49, (current?.cryptEntrance?.x ?? 8) + i % 2),
+         y:Math.min(39, (current?.cryptEntrance?.y ?? 8) + Math.floor(i / 2))};
+      updates[`players/${uid}`] = {
+        uid, characterName: doc.characterName, map: mode, x:spot.x, y:spot.y,
+        updatedAt: serverTimestamp()
+      };
+    }
+    updates["sessions/main/mapMode"] = mode;
+    updates["sessions/main/updatedAt"] = serverTimestamp();
+    updates["sessions/main/updatedBy"] = activeUser.uid;
+    await update(ref(db), updates);
+  } catch (error) {
+    showSyncError(error);
+    throw error;
+  } finally {
+    partyTravelInProgress = false;
+  }
+}
+// Jogador anuncia a entrada por meio de seu documento (permissão própria).
+// O mestre conectado coordena o grupo ao receber a mudança.
+async function requestPartyTravel(mode) {
+  if (!activeUser || (mode !== "dungeon" && mode !== "overworld")) return;
+  if (role === "master") return tracked(() => performPartyTravel(mode));
+  if (role !== "player") return;
+  const state = window.ValeCorvoApp?.getState?.();
+  const me = state?.tokens?.find(t => t.id === `player-${activeUser.uid}`);
+  if (!me) return;
+  const spot = mode === "dungeon" ? {x:21,y:20} :
+    {x:Math.max(0,Math.min(49,state.cryptEntrance?.x ?? 8)),y:Math.max(0,Math.min(39,state.cryptEntrance?.y ?? 8))};
+  await tracked(() => set(ref(db, `players/${activeUser.uid}`), {
+    uid:activeUser.uid, characterName:me.name, map:mode,
+    x:spot.x, y:spot.y, updatedAt:serverTimestamp()
+  }));
+}
+
 const withStatus = fn => (...args) => tracked(() => fn(...args));
 window.ValeCorvoSync = {
   queueSessionSave,
+  requestPartyTravel: (...args) => requestPartyTravel(...args).catch(showSyncError),
+  saveMistSettings: (...args) => saveMistSettings(...args).catch(showSyncError),
+  // Login concluído: atualiza o nome visível sem esperar a próxima reconexão.
+  refreshPresence: () => announcePresence().catch(showSyncError),
   saveTokenPosition: withStatus(saveTokenPosition),
   saveExploration: withStatus(saveExploration),
   saveTreasures: withStatus(saveTreasures),
@@ -355,15 +513,31 @@ onAuthStateChanged(auth, async user => {
   // do contrário o mestre deixava de ver o token até o jogador recarregar a página (F5).
   unsubscribers.push(onValue(ref(db, ".info/connected"), snap => {
     if (snap.val() === true) {
-      announcePresence();
+      announcePresence().catch(showSyncError);
       if (!lastSaveFailed) setSyncStatus("ok");
     } else {
       setSyncStatus("offline");
     }
   }, showSyncError));
 
-  // A sessão do mestre é compartilhada com todas as contas autenticadas.
-  // Este modo prioriza simplicidade e confiança entre jogadores: a geometria e os dados enviados ao navegador são públicos.
+  // O mestre começa toda nova entrada sem névoa, e todos os jogadores
+  // acompanham o mesmo nó de maneira independente das gravações do mapa.
+  let firstMistSnapshot = true;
+  unsubscribers.push(onValue(ref(db, "sessions/mist"), snap => {
+    if (firstMistSnapshot) {
+      firstMistSnapshot = false;
+      if (role === "master") {
+        saveMistSettings({ enabled: false, density: snap.val()?.density ?? 0.85 })
+          .catch(showSyncError);
+        window.ValeCorvoApp?.applyMistSettings?.({ enabled: false, density: snap.val()?.density ?? 0.85 });
+        return;
+      }
+    }
+    window.ValeCorvoApp?.applyMistSettings?.(snap.exists()
+      ? snap.val() : { enabled: false, density: 0.85 });
+  }, showSyncError));
+
+  // O mapa segue sincronizado separadamente da névoa ambiental.
   unsubscribers.push(onValue(ref(db, "sessions/main"), snap => {
     if (snap.exists()) {
       const remote = { ...snap.val() };
@@ -386,7 +560,10 @@ onAuthStateChanged(auth, async user => {
     const refreshActivePlayers = () => {
       const activePlayers = Object.entries(playersValues)
         .filter(([uid, data]) => presenceValues[uid]?.active === true && data)
-        .map(([uid, data]) => ({ ...data, uid, displayName: displayNames.get(uid) || "" }));
+        .map(([uid, data]) => ({
+          ...data, uid,
+          displayName: presenceValues[uid]?.displayName || displayNames.get(uid) || ""
+        }));
       playerDocs = new Map(activePlayers.map(p => [p.uid, p]));
       window.ValeCorvoApp?.applyPlayerDocs?.(activePlayers);
       // Busca o nome de exibição dos jogadores novos e redesenha quando chegar.
@@ -398,20 +575,51 @@ onAuthStateChanged(auth, async user => {
       presenceValues = snap.val() || {};
       refreshActivePlayers();
     }, showSyncError));
+    let previousMaps = null;
     unsubscribers.push(onValue(ref(db, "players"), snap => {
       playersValues = snap.val() || {};
       refreshActivePlayers();
+      const nextMaps = new Map(Object.entries(playersValues).map(([uid, data]) => [uid, data?.map]));
+      if (previousMaps && !partyTravelInProgress) {
+        // Só mudanças de mapa de um personagem já acompanhado iniciam uma
+        // transição. Assim o login de alguém com progresso antigo não causa
+        // teleporte indevido de toda a campanha.
+        for (const [uid, doc] of Object.entries(playersValues)) {
+          if (!playerDocs.has(uid) || !previousMaps.has(uid)) continue;
+          if (previousMaps.get(uid) === doc?.map) continue;
+          const campaignMode = window.ValeCorvoApp?.getState?.().mapMode;
+          if ((doc.map === "dungeon" || doc.map === "overworld") &&
+              doc.map !== campaignMode) {
+            performPartyTravel(doc.map).catch(showSyncError);
+            break;
+          }
+        }
+      }
+      previousMaps = nextMaps;
     }, showSyncError));
   } else {
-    unsubscribers.push(onValue(ref(db, `players/${user.uid}`), snap => {
-      if (snap.exists()) {
-        const player = snap.val();
-        window.firebaseCharacterName = player.characterName || null;
-        const applyOwn = () => window.ValeCorvoApp?.applyOwnPlayerDoc?.(
-          { ...player, displayName: displayNames.get(user.uid) || user.displayName || "" });
-        applyOwn();
-        if (!displayNames.has(user.uid)) loadDisplayName(user.uid).then(name => { if (name) applyOwn(); });
-      }
+    // Jogadores também recebem a lista de personagens conectados.
+    // A regra de leitura é aberta apenas para usuários autenticados; cada um continua
+    // podendo escrever somente em players/{seu próprio UID}.
+    let presenceValues = {};
+    let playersValues = {};
+    const refreshVisiblePlayers = () => {
+      const visiblePlayers = Object.entries(playersValues)
+        .filter(([uid, data]) => presenceValues[uid]?.active === true && data)
+        .map(([uid, data]) => ({
+          ...data, uid,
+          displayName: presenceValues[uid]?.displayName || (uid === user.uid ? user.displayName : "") || data.displayName || data.characterName || ""
+        }));
+      playerDocs = new Map(visiblePlayers.map(p => [p.uid, p]));
+      window.ValeCorvoApp?.applyPlayerDocs?.(visiblePlayers);
+    };
+    unsubscribers.push(onValue(ref(db, "presence"), snap => {
+      presenceValues = snap.val() || {};
+      refreshVisiblePlayers();
+    }, showSyncError));
+    unsubscribers.push(onValue(ref(db, "players"), snap => {
+      playersValues = snap.val() || {};
+      refreshVisiblePlayers();
     }, showSyncError));
   }
 
@@ -421,7 +629,7 @@ onAuthStateChanged(auth, async user => {
     const values = snap.val()?.items || {};
     const items = Object.entries(values).map(([id, data]) => ({ ...data, id: data?.id ?? id }));
     window.ValeCorvoApp?.setTreasures?.(items);
-    loadGmNotes(items);
+    loadGmNotes(items).catch(showSyncError);
     if (!items.length) migrateOldTreasures();
   }, showSyncError));
 
