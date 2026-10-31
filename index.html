@@ -1981,6 +1981,12 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                     token.y = Math.max(0, Math.min(GRID_ROWS - 1, p.y));
                 }
                 token.map = p.map === 'dungeon' ? 'dungeon' : 'overworld';
+                // Posições antigas gravadas dentro da rocha são exibidas num
+                // ponto seguro, até que o próximo movimento salve a correção.
+                if (token.map === 'dungeon' && !isDungeonFloor(token.x, token.y)) {
+                    token.x = 21;
+                    token.y = 20;
+                }
                 return token;
             },
             applyPlayerDocs(docs) {
