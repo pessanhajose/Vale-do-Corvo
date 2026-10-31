@@ -1280,43 +1280,62 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         }
 
         // Dungeon Renderer
+        // A MESMA geometria alimenta desenho, spawn e colisão: não há
+        // coordenadas de "sala" que o mapa considere rocha.
+        function dungeonFloorKind(x, y) {
+            if (!Number.isInteger(x) || !Number.isInteger(y) ||
+                x < 0 || x >= GRID_COLS || y < 0 || y >= GRID_ROWS) return null;
+            const inside = (x1, y1, x2, y2) =>
+                x >= x1 && x <= x2 && y >= y1 && y <= y2;
+            if (inside(24, 2, 32, 7)) return 'crypt';
+            if (inside(17, 8, 26, 13)) return 'prison';
+            if (inside(23, 7, 26, 10) || inside(23, 12, 30, 15) ||
+                inside(27, 14, 30, 19)) return 'corridor';
+            if (inside(18, 17, 27, 23)) return 'ritual';
+            if (inside(10, 22, 21, 26)) return 'prison';
+            if (inside(10, 26, 13, 29) || inside(5, 28, 13, 34)) return 'corridor';
+            if (inside(10, 34, 32, 38) || inside(28, 27, 38, 35)) return 'crypt';
+            if (inside(32, 22, 44, 26)) return 'prison';
+            if (inside(30, 23, 33, 25) || inside(27, 24, 31, 29)) return 'corridor';
+            return null;
+        }
+        function isDungeonFloor(x, y) {
+            return dungeonFloorKind(x, y) !== null;
+        }
+        // Câmara Ritualística: interior sem parede, com espaço para o grupo.
+        function partySpawnPositions(count) {
+            const places = [];
+            for (let y = 19; y <= 21; y++)
+                for (let x = 20; x <= 25; x++)
+                    if (isDungeonFloor(x, y)) places.push({ x, y });
+            for (let y = 18; y <= 22; y++)
+                for (let x = 19; x <= 26; x++)
+                    if (isDungeonFloor(x, y) && !places.some(p => p.x === x && p.y === y))
+                        places.push({ x, y });
+            return Array.from({ length: count }, (_, index) =>
+                places[index % places.length] || { x: 21, y: 20 });
+        }
+        // Percorre o trajeto célula a célula: não é permitido atravessar
+        // paredes arrastando o token de um lado da sala até o outro.
+        function dungeonPathIsClear(x0, y0, x1, y1) {
+            if (!isDungeonFloor(x0, y0) || !isDungeonFloor(x1, y1)) return false;
+            const steps = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0));
+            for (let i = 1; i <= steps; i++) {
+                const x = Math.round(x0 + (x1 - x0) * i / steps);
+                const y = Math.round(y0 + (y1 - y0) * i / steps);
+                if (!isDungeonFloor(x, y)) return false;
+            }
+            return true;
+        }
+
         function drawDungeonTerrain() {
             for (let x = 0; x < GRID_COLS; x++) {
                 for (let y = 0; y < GRID_ROWS; y++) {
                     const px = x * tileSize;
                     const py = y * tileSize;
 
-                    // Planta da cripta redesenhada seguindo o esboço enviado:
-                    // salas irregulares ligadas por corredores em zigue-zague.
-                    let isRoom = false;
-                    let isWall = false;
-                    let isSpecial = '';
-
-                    const inRect = (x1, y1, x2, y2) => x >= x1 && x <= x2 && y >= y1 && y <= y2;
-
-                    // Sala superior e braço noroeste.
-                    if (inRect(24, 2, 32, 7)) { isRoom = true; isSpecial = 'crypt'; }
-                    else if (inRect(17, 8, 26, 13)) { isRoom = true; isSpecial = 'prison'; }
-
-                    // Ligação superior em zigue-zague até à câmara central.
-                    else if (inRect(23, 7, 26, 10) ||
-                             inRect(23, 12, 30, 15) ||
-                             inRect(27, 14, 30, 19)) isRoom = true;
-
-                    // Câmara central.
-                    else if (inRect(18, 17, 27, 23)) { isRoom = true; isSpecial = 'ritual'; }
-
-                    // Ala oeste e sala inferior esquerda.
-                    else if (inRect(10, 22, 21, 26)) { isRoom = true; isSpecial = 'prison'; }
-                    else if (inRect(10, 26, 13, 29) || inRect(5, 28, 13, 34)) isRoom = true;
-
-                    // Grande salão inferior, ligado à sala central e à ala sudeste.
-                    else if (inRect(10, 34, 32, 38)) { isRoom = true; isSpecial = 'crypt'; }
-                    else if (inRect(28, 27, 38, 35)) { isRoom = true; isSpecial = 'crypt'; }
-
-                    // Corredor leste e câmara oriental.
-                    else if (inRect(32, 22, 44, 26)) { isRoom = true; isSpecial = 'prison'; }
-                    else if (inRect(30, 23, 33, 25) || inRect(27, 24, 31, 29)) isRoom = true;
+                    const isSpecial = dungeonFloorKind(x, y);
+                    const isRoom = isSpecial !== null;
 
                     if (isRoom) {
                         if (isSpecial === 'ritual') ctx.fillStyle = '#494052'; // Câmara ritual mais clara
@@ -1348,6 +1367,31 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                     }
                 }
             }
+
+            // Paredes de pedra elevadas ao redor de todo o piso escavado.
+            // Corredores abertos continuam transitáveis; rochas são obstáculos.
+            ctx.save();
+            ctx.lineJoin = 'round';
+            for (let x = 0; x < GRID_COLS; x++) {
+                for (let y = 0; y < GRID_ROWS; y++) {
+                    if (!isDungeonFloor(x, y)) continue;
+                    const px = x * tileSize, py = y * tileSize;
+                    const edges = [];
+                    if (!isDungeonFloor(x, y - 1)) edges.push([px, py, px + tileSize, py]);
+                    if (!isDungeonFloor(x + 1, y)) edges.push([px + tileSize, py, px + tileSize, py + tileSize]);
+                    if (!isDungeonFloor(x, y + 1)) edges.push([px, py + tileSize, px + tileSize, py + tileSize]);
+                    if (!isDungeonFloor(x - 1, y)) edges.push([px, py, px, py + tileSize]);
+                    for (const [x1, y1, x2, y2] of edges) {
+                        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                        ctx.lineWidth = 7; ctx.strokeStyle = '#080c12'; ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                        ctx.lineWidth = 4; ctx.strokeStyle = '#9aa6b6'; ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+                        ctx.lineWidth = 1.5; ctx.strokeStyle = '#d7dee8'; ctx.stroke();
+                    }
+                }
+            }
+            ctx.restore();
 
             // Dungeon Decorative Elements (Torches, Sarcophagi, Ritual Circles)
             // Elemento decorativo do salão final da cripta, longe da entrada.
@@ -1414,36 +1458,33 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             }
         }
 
-        // Cada herói começa isolado em uma sala aleatória diferente.
-        // A Câmara do Altar é excluída para preservar o encontro final.
+        // Todos os jogadores conectados chegam à MESMA sala da cripta.
         function placeHeroesInRandomCryptRoom() {
-            const rooms = [
-                { name: 'Cela Antiga', x1: 17, y1: 8, x2: 26, y2: 13 },
-                { name: 'Câmara Ritualística', x1: 18, y1: 17, x2: 27, y2: 23 },
-                { name: 'Ala Oeste', x1: 10, y1: 22, x2: 21, y2: 26 },
-                { name: 'Câmara Inferior Oeste', x1: 5, y1: 28, x2: 13, y2: 34 },
-                { name: 'Grande Salão Inferior', x1: 10, y1: 34, x2: 32, y2: 38 },
-                { name: 'Câmara dos Sarcófagos', x1: 32, y1: 22, x2: 44, y2: 26 },
-                { name: 'Câmara Sudeste', x1: 28, y1: 27, x2: 38, y2: 35 }
-            ];
-            const heroes = tokens.filter(t => t.type === 'hero');
-            // Embaralha as salas e distribui uma sala diferente para cada herói.
-            const shuffledRooms = [...rooms].sort(() => Math.random() - 0.5);
+            const heroes = tokens.filter(t => t.type === 'hero')
+                .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+            const positions = partySpawnPositions(heroes.length);
             heroes.forEach((hero, i) => {
-                const room = shuffledRooms[i % shuffledRooms.length];
-                // Escolhe uma posição interna aleatória, mantendo distância das paredes.
-                const minX = room.x1 + 1;
-                const maxX = Math.max(minX, room.x2 - 1);
-                const minY = room.y1 + 1;
-                const maxY = Math.max(minY, room.y2 - 1);
-                hero.x = minX + Math.floor(Math.random() * (maxX - minX + 1));
-                hero.y = minY + Math.floor(Math.random() * (maxY - minY + 1));
+                hero.x = positions[i].x;
+                hero.y = positions[i].y;
                 hero.map = 'dungeon';
             });
-            // Reinicia a névoa e revela apenas o entorno de cada herói.
             initDungeonFog(0);
-            updateTorchVision();
-            return heroes.map((hero, i) => ({ hero: hero.name || `Jogador ${i + 1}`, sala: shuffledRooms[i % shuffledRooms.length].name }));
+            return heroes.map(hero => ({ hero: hero.name, sala: 'Câmara Ritualística' }));
+        }
+        function beginPartyTransition(mode) {
+            if (window.firebaseRole !== 'player' && window.firebaseRole !== 'master') return;
+            if (mode === 'dungeon') placeHeroesInRandomCryptRoom();
+            else {
+                tokens.filter(t => t.type === 'hero').forEach((t, i) => {
+                    t.x = Math.min(GRID_COLS - 1, cryptEntrance.x + (i % 2));
+                    t.y = Math.min(GRID_ROWS - 1, cryptEntrance.y + Math.floor(i / 2));
+                    t.map = 'overworld';
+                });
+            }
+            switchMapMode(mode);
+            draggedTokenId = null;
+            isDragging = false;
+            window.ValeCorvoSync?.requestPartyTravel?.(mode);
         }
 
         // Mouse Interactions for Pan, Tokens, and Fog Painting
@@ -1529,26 +1570,25 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 if (gridX >= 0 && gridX < GRID_COLS && gridY >= 0 && gridY < GRID_ROWS) {
                     const token = tokens.find(t => t.id === draggedTokenId);
                     if (token) {
+                        if (currentMapMode === 'dungeon' &&
+                            !dungeonPathIsClear(token.x, token.y, gridX, gridY)) return;
                         token.x = gridX;
                         token.y = gridY;
 
                         // Recalcula a visão imediatamente quando um token se move.
                         if (currentMapMode === 'dungeon' && token.type === 'hero') updateTorchVision();
 
-                        // Check if stepping on Dungeon Entrance in Castle (8,8)
-                        if (currentMapMode === 'overworld' && Math.abs(gridX - cryptEntrance.x) <= 1 && Math.abs(gridY - cryptEntrance.y) <= 1) {
-                            // Cada entrada coloca o grupo em uma sala aleatória válida da cripta.
-                            placeHeroesInRandomCryptRoom();
-                            switchMapMode('dungeon');
+                        // Um herói atravessando a entrada/saída leva o grupo.
+                        if (token.type === 'hero' && currentMapMode === 'overworld' &&
+                            Math.abs(gridX - cryptEntrance.x) <= 1 &&
+                            Math.abs(gridY - cryptEntrance.y) <= 1) {
+                            beginPartyTransition('dungeon');
+                            return;
                         }
-                        // Ao sair, devolve os heróis para a entrada reposicionada no mapa do vale.
-                        else if (currentMapMode === 'dungeon' && gridX >= 24 && gridX <= 26 && gridY >= 36 && gridY <= 38) {
-                            tokens.filter(t => t.type === 'hero').forEach((t, i) => {
-                                t.x = Math.min(GRID_COLS - 1, cryptEntrance.x + (i % 2));
-                                t.y = Math.min(GRID_ROWS - 1, cryptEntrance.y + Math.floor(i / 2));
-                                t.map = 'overworld';
-                            });
-                            switchMapMode('overworld');
+                        if (token.type === 'hero' && currentMapMode === 'dungeon' &&
+                            gridX >= 24 && gridX <= 26 && gridY >= 36 && gridY <= 38) {
+                            beginPartyTransition('overworld');
+                            return;
                         }
 
                         drawMap();
@@ -1908,7 +1948,8 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                     tokens = [...sharedTokens, ...currentHeroes];
                 }
                 if (Array.isArray(state.dungeonFog) && state.dungeonFog.length === GRID_COLS) dungeonFog = state.dungeonFog.map(col => [...col]);
-                if (state.mapMode === 'overworld' || state.mapMode === 'dungeon') currentMapMode = state.mapMode;
+                if ((state.mapMode === 'overworld' || state.mapMode === 'dungeon') &&
+                    state.mapMode !== currentMapMode) switchMapMode(state.mapMode);
                 if (state.cryptEntrance && Number.isInteger(state.cryptEntrance.x) && Number.isInteger(state.cryptEntrance.y)) cryptEntrance = {...state.cryptEntrance};
                 if (Number.isInteger(state.visionRadius)) visionRadius = Math.max(2, Math.min(12, state.visionRadius));
                 if (typeof state.magicVisionEnabled === 'boolean') magicVisionEnabled = state.magicVisionEnabled;
