@@ -84,55 +84,8 @@ async function tracked(fn) {
     if (!pendingSaves && !lastSaveFailed) setSyncStatus("ok");
   }
 }
-const clip = (v, n = 1500) => String(v ?? "").slice(0, n);
-function loadDisplayName(uid) {
-  if (displayNames.has(uid)) return Promise.resolve(displayNames.get(uid));
-  if (pendingNames.has(uid)) return pendingNames.get(uid);
-  const job = get(ref(db, `users/${uid}`))
-    .then(snap => {
-      const name = snap.exists() ? clip(snap.val()?.displayName, 60).trim() : "";
-      displayNames.set(uid, name);
-      return name;
-    })
-    .catch(() => "")
-    .finally(() => pendingNames.delete(uid));
-  pendingNames.set(uid, job);
-  return job;
-}
-function publishGmNotes() {
-  window.ValeCorvoApp?.setGmNotes?.(Object.fromEntries([...gmNotes].filter(([, v]) => v)));
-}
 // Segredos (respostas e consequências) ficam em gmNotes/<id>: as regras do banco só liberam
 // leitura e escrita para o mestre, então jogadores não conseguem ler nem pelo console.
-async function loadGmNotes(items) {
-  if (role !== "master" || !activeUser) return;
-  const missing = items.map(i => String(i.id)).filter(id => !gmNotes.has(id));
-  if (!missing.length) return;
-  await Promise.all(missing.map(async id => {
-    try {
-      const snap = await get(ref(db, `gmNotes/${id}`));
-      gmNotes.set(id, snap.exists() ? snap.val() : null);
-    } catch (error) { showSyncError(error); }
-  }));
-  publishGmNotes();
-}
-async function saveGmNotes(notes) {
-  if (role !== "master" || !activeUser || !notes || typeof notes !== "object") return;
-  for (const [id, n] of Object.entries(notes)) {
-    const clean = {
-      treasureId: String(id),
-      answer: clip(n?.answer), success: clip(n?.success), failure: clip(n?.failure),
-      reward: clip(n?.reward), notes: clip(n?.notes),
-      rewards: Array.isArray(n?.rewards) ? n.rewards.slice(0, 12).map(r => clip(r, 400)) : [],
-      updatedAt: serverTimestamp(), updatedBy: activeUser.uid
-    };
-    try {
-      await set(ref(db, `gmNotes/${id}`), clean);
-      gmNotes.set(String(id), { ...clean, updatedAt: Date.now() });
-    } catch (error) { showSyncError(error); throw error; }
-  }
-  publishGmNotes();
-}
 // O mestre só grava no mapa e só enxerga jogadores se o UID dele estiver em masters/ no banco.
 // Quando não está, tudo parece funcionar mas nada salva: este aviso deixa o motivo e o UID na tela.
 const OWNER_UID = "cPr3vPhG5XPS6ifk5NixuAjNui82";
@@ -167,16 +120,6 @@ async function checkMasterAuthorization(user) {
   text.append(code, copy);
   banner.append(close, text);
   document.body.appendChild(banner);
-}
-async function announcePresence() {
-  if (!activeUser) return;
-  const presenceRef = ref(db, `presence/${activeUser.uid}`);
-  try {
-    await onDisconnect(presenceRef).remove();
-    await set(presenceRef, { active: true, uid: activeUser.uid, updatedAt: serverTimestamp() });
-  } catch (error) {
-    showSyncError(error);
-  }
 }
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") announcePresence();
