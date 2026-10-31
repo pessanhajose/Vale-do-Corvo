@@ -336,6 +336,15 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                     <div draggable="true" ondragstart="selectTokenType(event, 'enemy', 'Besta da Névoa', '#7f1d1d')" onclick="spawnTokenAtCenter('enemy', 'Besta da Névoa', '#7f1d1d')" class="w-10 h-10 rounded-full bg-red-950 border-2 border-red-600 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Monstro: Besta da Névoa">
                         <i class="fa-solid fa-wolf-pack-battalion text-red-300 text-sm"></i>
                     </div>
+                    <div role="button" tabindex="0" draggable="true" ondragstart="selectTokenType(event, 'enemy', 'Goblin', '#16a34a')" onclick="spawnTokenAtCenter('enemy', 'Goblin', '#16a34a')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" class="w-10 h-10 rounded-full bg-green-950 border-2 border-green-500 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Monstro: Goblin" aria-label="Adicionar token Goblin">
+                        <i class="fa-solid fa-khanda text-green-300 text-sm"></i>
+                    </div>
+                    <div role="button" tabindex="0" draggable="true" ondragstart="selectTokenType(event, 'enemy', 'Protetor', '#0d9488')" onclick="spawnTokenAtCenter('enemy', 'Protetor', '#0d9488')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" class="w-10 h-10 rounded-full bg-teal-950 border-2 border-teal-400 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Monstro: Protetor" aria-label="Adicionar token Protetor">
+                        <i class="fa-solid fa-shield text-teal-200 text-sm"></i>
+                    </div>
+                    <div role="button" tabindex="0" draggable="true" ondragstart="selectTokenType(event, 'enemy', 'Corvo', '#64748b')" onclick="spawnTokenAtCenter('enemy', 'Corvo', '#64748b')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" class="w-10 h-10 rounded-full bg-slate-950 border-2 border-slate-400 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Monstro: Corvo" aria-label="Adicionar token Corvo">
+                        <i class="fa-solid fa-crow text-slate-200 text-sm"></i>
+                    </div>
                     <div draggable="true" ondragstart="selectTokenType(event, 'npc', 'Aldeão', '#64748b')" onclick="spawnTokenAtCenter('npc', 'Aldeão', '#64748b')" class="w-10 h-10 rounded-full bg-slate-800 border-2 border-slate-400 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="NPC: Camponês">
                         <i class="fa-solid fa-user text-slate-200 text-sm"></i>
                     </div>
@@ -1698,16 +1707,33 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             return letter;
         }
 
+        function uniqueMapTokenId() {
+            return 'token-' + (globalThis.crypto?.randomUUID?.() ||
+                Date.now().toString(36) + '-' + Math.random().toString(36).slice(2));
+        }
+        function validTokenSpawn(x, y) {
+            if (currentMapMode !== 'dungeon' || isDungeonFloor(x, y)) return {x, y};
+            // Evita monstros nascerem dentro da rocha no mapa da cripta.
+            for (let radius = 1; radius < Math.max(GRID_COLS, GRID_ROWS); radius++) {
+                for (let dy = -radius; dy <= radius; dy++)
+                    for (let dx = -radius; dx <= radius; dx++)
+                        if (isDungeonFloor(x + dx, y + dy))
+                            return {x: x + dx, y: y + dy};
+            }
+            return {x:21, y:20};
+        }
         function spawnTokenAtCenter(type, name, color) {
             const centerX = Math.floor(GRID_COLS / 2);
             const centerY = Math.floor(GRID_ROWS / 2);
+            if (window.firebaseRole === 'player') return;
+            const pos = validTokenSpawn(
+                centerX + Math.floor(Math.random() * 3) - 1,
+                centerY + Math.floor(Math.random() * 3) - 1
+            );
             const newToken = {
-                id: Date.now(),
-                type: type,
-                name: name,
-                color: color,
-                x: centerX + Math.floor(Math.random() * 3) - 1,
-                y: centerY + Math.floor(Math.random() * 3) - 1,
+                id: uniqueMapTokenId(),
+                type, name, color,
+                x: pos.x, y: pos.y,
                 map: currentMapMode
             };
             tokens.push(newToken);
@@ -1733,14 +1759,13 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             const gridX = Math.floor(mouseX / tileSize);
             const gridY = Math.floor(mouseY / tileSize);
 
+            if (window.firebaseRole === 'player') return;
             if (gridX >= 0 && gridX < GRID_COLS && gridY >= 0 && gridY < GRID_ROWS) {
+                const pos = validTokenSpawn(gridX, gridY);
                 tokens.push({
-                    id: Date.now(),
-                    type,
-                    name,
-                    color,
-                    x: gridX,
-                    y: gridY,
+                    id: uniqueMapTokenId(),
+                    type, name, color,
+                    x: pos.x, y: pos.y,
                     map: currentMapMode
                 });
                 populatePlayerSelects();
