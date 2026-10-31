@@ -221,10 +221,10 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         <div class="flex items-center space-x-2">
             <!-- Map Mode Switcher -->
             <div class="flex bg-gothic-950 p-1 rounded-lg border border-gothic-700">
-                <button id="btn-mode-overworld" onclick="switchMapMode('overworld')" class="px-2.5 py-1 rounded text-xs font-gothic font-bold bg-blood-900 text-corvo-gold border border-corvo-gold shadow">
+                <button id="btn-mode-overworld" onclick="beginPartyTransition('overworld')" class="px-2.5 py-1 rounded text-xs font-gothic font-bold bg-blood-900 text-corvo-gold border border-corvo-gold shadow">
                     <i class="fa-solid fa-mountain-sun"></i> <span class="hidden md:inline">Vale-Corvo</span>
                 </button>
-                <button id="btn-mode-dungeon" onclick="switchMapMode('dungeon')" class="px-2.5 py-1 rounded text-xs font-gothic font-bold text-gray-400 hover:text-white transition">
+                <button id="btn-mode-dungeon" onclick="beginPartyTransition('dungeon')" class="px-2.5 py-1 rounded text-xs font-gothic font-bold text-gray-400 hover:text-white transition">
                     <i class="fa-solid fa-dungeon"></i> <span class="hidden md:inline">Cripta</span>
                 </button>
             </div>
