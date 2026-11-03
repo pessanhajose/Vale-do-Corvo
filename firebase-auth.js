@@ -1,4 +1,4 @@
-import { auth, db } from "./firebase-config.js?v=2026-11-02.3";
+import { auth, db } from "./firebase-config.js?v=2026-11-02.4";
 import { signInAnonymously, onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { ref, get, set, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
@@ -12,39 +12,49 @@ const message=document.getElementById("firebase-auth-message"), submit=document.
 const userBar=document.getElementById("firebase-user-bar"), userLabel=document.getElementById("firebase-user-label");
 const help=document.getElementById("firebase-master-device-help"), uidLabel=document.getElementById("firebase-device-uid");
 const logout=document.getElementById("firebase-logout-master");
-// Região inicial X15: longe do marcador central do Povoado Névoa-Fria.
-// Cada conta recebe uma célula livre diferente, sempre fora da entrada da cripta.
+// Ponto inicial: AW32 (índices zero-based x=48, y=31).
+// Espalha os jogadores ao redor da célula sem sair dos limites do mapa.
 const initialSpots=[
+ {x:48,y:31},{x:47,y:31},{x:49,y:31},{x:48,y:30},
+ {x:48,y:32},{x:47,y:30},{x:49,y:30},{x:47,y:32},
+ {x:49,y:32},{x:46,y:31},{x:46,y:30},{x:46,y:32},
+ {x:48,y:29},{x:47,y:29},{x:49,y:29},{x:48,y:33},
+ {x:47,y:33},{x:49,y:33},{x:46,y:29},{x:46,y:33}
+];
+// Corrige apenas personagens que continuaram em pontos iniciais antigos.
+// Não teleporta personagens que já exploraram outras regiões.
+const previousSpawnSpots=[
+ {x:21,y:13},{x:20,y:14},{x:22,y:14},{x:21,y:15},
  {x:23,y:14},{x:24,y:14},{x:25,y:14},{x:22,y:15},
  {x:23,y:15},{x:24,y:15},{x:25,y:15},{x:22,y:16},
  {x:23,y:16},{x:24,y:16},{x:25,y:16},{x:23,y:17},
  {x:22,y:17},{x:24,y:17},{x:25,y:17}
 ];
-const previousSpawnSpots=[
- {x:21,y:13},{x:20,y:14},{x:22,y:14},{x:21,y:15}
-];
-async function chooseInitialSpot(uid) {
+async function getCurrentCryptEntrance(){
+ const snap=await get(ref(db,"sessions/main/cryptEntrance"));
+ const value=snap.val();
+ return Number.isInteger(value?.x)&&Number.isInteger(value?.y)
+   ? value : {x:8,y:8};
+}
+async function chooseInitialSpot(uid, entrance){
  const snap=await get(ref(db,"players"));
  const occupied=new Set(Object.entries(snap.val()||{})
    .filter(([other,p])=>other!==uid&&p?.map==="overworld")
    .map(([,p])=>p.x+":"+p.y));
- return initialSpots.find(p=>!occupied.has(p.x+":"+p.y)) || initialSpots[0];
+ const allowed=initialSpots.filter(p=>p.x!==entrance.x||p.y!==entrance.y);
+ const unoccupied=allowed.find(p=>!occupied.has(p.x+":"+p.y));
+ return unoccupied || allowed[0] || {x:47,y:31};
 }
-/** Migra apenas posições iniciais antigas e evita login no portal. */
-async function ensureSafeOverworldPosition(user, playerSnap) {
- if(!user || !playerSnap.exists())return;
+/** Mantém o progresso e corrige somente antigas posições iniciais/portal. */
+async function ensureSafeOverworldPosition(user, playerSnap){
+ if(!user||!playerSnap.exists())return;
  const p=playerSnap.val();
- if(p?.map!=="overworld" || !Number.isInteger(p?.x) || !Number.isInteger(p?.y))return;
- const [versionSnap, entranceSnap]=await Promise.all([
-   get(ref(db,"sessions/main/entranceVersion")),
-   get(ref(db,"sessions/main/cryptEntrance"))
- ]);
- const entrance=versionSnap.val()==="AW32-v1" && entranceSnap.exists()
-   ? entranceSnap.val() : {x:48,y:31};
- const onPortal=entrance && p.x===entrance.x && p.y===entrance.y;
+ if(p?.map!=="overworld"||!Number.isInteger(p?.x)||!Number.isInteger(p?.y))return;
+ const entrance=await getCurrentCryptEntrance();
+ const onPortal=p.x===entrance.x&&p.y===entrance.y;
  const legacySpawn=previousSpawnSpots.some(pos=>pos.x===p.x&&pos.y===p.y);
- if(!onPortal && !legacySpawn)return;
- const safe=await chooseInitialSpot(user.uid);
+ if(!onPortal&&!legacySpawn)return;
+ const safe=await chooseInitialSpot(user.uid,entrance);
  await set(ref(db,"players/"+user.uid),{
    uid:user.uid,characterName:p.characterName,map:"overworld",
    x:safe.x,y:safe.y,updatedAt:serverTimestamp()
@@ -71,7 +81,7 @@ form.addEventListener("submit",async e=>{
    if(role==="player"){
     const pRef=ref(db,"players/"+user.uid),p=await get(pRef);
     if(!p.exists()){
-     const safe=await chooseInitialSpot(user.uid);
+     const safe=await chooseInitialSpot(user.uid,await getCurrentCryptEntrance());
      const initial={uid:user.uid,characterName:characterSelect.value,map:"overworld",...safe,updatedAt:serverTimestamp()};
      await set(pRef,initial);
     }
