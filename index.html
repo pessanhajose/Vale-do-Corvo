@@ -6,12 +6,12 @@
     <meta name="theme-color" content="#090a0f">
     <!-- Versão única para todos os dispositivos. GitHub Pages e celulares podem
          guardar HTML/JS em cache; os módulos abaixo usam esta mesma revisão. -->
-    <meta name="vale-corvo-version" content="2026-10-30.4">
+    <meta name="vale-corvo-version" content="2026-11-02.1">
     <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
     <script>
     (function () {
       'use strict';
-      const localVersion = "2026-10-30.4";
+      const localVersion = "2026-11-02.1";
       let notifiedVersion = '';
       function updateUrl(nextVersion) {
         const url = new URL(window.location.href);
@@ -1352,7 +1352,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             const ePx = cryptEntrance.x * tileSize + tileSize / 2;
             const ePy = cryptEntrance.y * tileSize + tileSize / 2;
             ctx.beginPath();
-            ctx.arc(ePx, ePy, tileSize * 0.6, 0, Math.PI * 2);
+            ctx.arc(ePx, ePy, tileSize * 0.42, 0, Math.PI * 2);
             ctx.fillStyle = 'rgba(185, 28, 28, 0.4)';
             ctx.fill();
             ctx.strokeStyle = '#ef4444';
@@ -1567,13 +1567,29 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 hero: hero.name, sala: dungeonSpawnRooms[i % dungeonSpawnRooms.length].name
             }));
         }
+        // O portal ocupa SOMENTE a sua célula. Ao sair, os heróis surgem
+        // em células vizinhas, nunca sobre o portal, evitando reentrada involuntária.
+        function cryptExitPosition(entrance, index) {
+            const x = Math.max(0, Math.min(GRID_COLS - 1, entrance.x));
+            const y = Math.max(0, Math.min(GRID_ROWS - 1, entrance.y));
+            const nearby = [
+                [0,1], [1,0], [0,-1], [-1,0], [1,1], [-1,1], [1,-1], [-1,-1],
+                [0,2], [2,0], [0,-2], [-2,0]
+            ].map(([dx,dy]) => ({x:x+dx,y:y+dy}))
+             .filter(p => p.x>=0 && p.x<GRID_COLS && p.y>=0 && p.y<GRID_ROWS);
+            return nearby[index % nearby.length] || {x:Math.max(0, x-1),y};
+        }
+        function onCryptEntranceTile(x,y) {
+            return x === cryptEntrance.x && y === cryptEntrance.y;
+        }
         function beginPartyTransition(mode) {
             if (window.firebaseRole !== 'player' && window.firebaseRole !== 'master') return;
             if (mode === 'dungeon') placeHeroesInRandomCryptRoom();
             else {
                 tokens.filter(t => t.type === 'hero').forEach((t, i) => {
-                    t.x = Math.min(GRID_COLS - 1, cryptEntrance.x + (i % 2));
-                    t.y = Math.min(GRID_ROWS - 1, cryptEntrance.y + Math.floor(i / 2));
+                    const pos = cryptExitPosition(cryptEntrance, i);
+                    t.x = pos.x;
+                    t.y = pos.y;
                     t.map = 'overworld';
                 });
             }
@@ -1668,6 +1684,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                     if (token) {
                         if (currentMapMode === 'dungeon' &&
                             !dungeonPathIsClear(token.x, token.y, gridX, gridY)) return;
+                        const previousX = token.x, previousY = token.y;
                         token.x = gridX;
                         token.y = gridY;
 
@@ -1676,8 +1693,8 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
 
                         // Um herói atravessando a entrada/saída leva o grupo.
                         if (token.type === 'hero' && currentMapMode === 'overworld' &&
-                            Math.abs(gridX - cryptEntrance.x) <= 1 &&
-                            Math.abs(gridY - cryptEntrance.y) <= 1) {
+                            onCryptEntranceTile(gridX, gridY) &&
+                            !onCryptEntranceTile(previousX, previousY)) {
                             beginPartyTransition('dungeon');
                             return;
                         }
@@ -2160,8 +2177,8 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         };
     </script>
 
-    <script type="module" src="./firebase-auth.js?v=2026-10-30.4"></script>
-    <script type="module" src="./firebase-sync.js?v=2026-10-30.4"></script>
+    <script type="module" src="./firebase-auth.js?v=2026-11-02.1"></script>
+    <script type="module" src="./firebase-sync.js?v=2026-11-02.1"></script>
 
 </body>
 </html>
