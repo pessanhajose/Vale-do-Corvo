@@ -1,4 +1,4 @@
-import { auth, db } from "./firebase-config.js?v=2026-11-02.2";
+import { auth, db } from "./firebase-config.js?v=2026-11-02.3";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
   ref, get, set, update, onValue, onDisconnect, serverTimestamp
@@ -132,6 +132,7 @@ function stateForRealtimeDatabase() {
     dungeonFog: state.dungeonFog.flat(),
     mapMode: state.mapMode,
     cryptEntrance: JSON.parse(JSON.stringify(state.cryptEntrance)),
+    entranceVersion: "AW32-v1",
     visionRadius: state.visionRadius,
     magicVisionEnabled: state.magicVisionEnabled,
     // Névoa ambiental: liga/desliga e intensidade para mestre e jogadores.
@@ -499,6 +500,18 @@ onAuthStateChanged(auth, async user => {
   unsubscribers.push(onValue(ref(db, "sessions/main"), snap => {
     if (snap.exists()) {
       const remote = { ...snap.val() };
+      // Migração única da entrada antiga: altera APENAS o portal no Firebase.
+      // Depois disso, alterações feitas pelo mestre não são sobrescritas.
+      if (remote.entranceVersion !== "AW32-v1") {
+        remote.cryptEntrance = {x:48, y:31};
+        remote.entranceVersion = "AW32-v1";
+        if (role === "master") {
+          update(ref(db, "sessions/main"), {
+            cryptEntrance: {x:48, y:31},
+            entranceVersion: "AW32-v1"
+          }).catch(showSyncError);
+        }
+      }
       if (Array.isArray(remote.dungeonFog) && remote.dungeonFog.length === 50 * 40 && !Array.isArray(remote.dungeonFog[0])) {
         remote.dungeonFog = Array.from({ length: 50 }, (_, x) => remote.dungeonFog.slice(x * 40, (x + 1) * 40));
       }
