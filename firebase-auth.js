@@ -1,4 +1,4 @@
-import { auth, db } from "./firebase-config.js?v=2026-11-02.1";
+import { auth, db } from "./firebase-config.js?v=2026-11-02.2";
 import { signInAnonymously, onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { ref, get, set, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
@@ -13,6 +13,26 @@ const userBar=document.getElementById("firebase-user-bar"), userLabel=document.g
 const help=document.getElementById("firebase-master-device-help"), uidLabel=document.getElementById("firebase-device-uid");
 const logout=document.getElementById("firebase-logout-master");
 const positions={"Guerreiro":{x:21,y:13},"Mago":{x:20,y:14},"Ladino":{x:22,y:14},"Clérigo":{x:21,y:15}};
+/** Impede que um jogador carregue ou nasça sobre a célula do portal. */
+async function ensureSafeOverworldPosition(user, playerSnap) {
+ if(!user || !playerSnap.exists())return;
+ const p=playerSnap.val();
+ if(p?.map==="dungeon" || !Number.isInteger(p?.x) || !Number.isInteger(p?.y))return;
+ const mapSnap=await get(ref(db,"sessions/main/cryptEntrance"));
+ const entrance=mapSnap.exists()?mapSnap.val():{x:8,y:8};
+ if(!Number.isInteger(entrance?.x)||!Number.isInteger(entrance?.y))return;
+ if(p.x!==entrance.x||p.y!==entrance.y)return;
+ // O jogador reaparece adjacente, fora do portal, preservando seu personagem.
+ const offsets=[[0,1],[1,0],[0,-1],[-1,0],[1,1],[-1,1],[-1,-1]];
+ const safe=offsets.map(([dx,dy])=>({x:p.x+dx,y:p.y+dy}))
+   .find(v=>v.x>=0&&v.x<50&&v.y>=0&&v.y<40);
+ if(!safe)return;
+ await set(ref(db,"players/"+user.uid),{
+   ...p,uid:user.uid,map:"overworld",x:safe.x,y:safe.y,
+   updatedAt:serverTimestamp()
+ });
+}
+
 function msg(t,err=false){message.textContent=t;message.className=err?"text-sm text-red-300 mt-3":"text-sm text-emerald-300 mt-3";}
 function roleFields(){const master=roleSelect.value==="master";characterWrap.classList.toggle("hidden",master);passwordWrap.classList.toggle("hidden",!master);passwordInput.required=master;help.classList.add("hidden");}
 roleSelect.addEventListener("change",roleFields);
@@ -32,7 +52,11 @@ form.addEventListener("submit",async e=>{
    await set(profileRef,{role:role==="master"?"master":"player",displayName:name,createdAt:snap.exists()?(snap.val().createdAt||serverTimestamp()):serverTimestamp()});
    if(role==="player"){
     const pRef=ref(db,"players/"+user.uid),p=await get(pRef);
-    if(!p.exists())await set(pRef,{uid:user.uid,characterName:characterSelect.value,map:"overworld",...positions[characterSelect.value],updatedAt:serverTimestamp()});
+    if(!p.exists()){
+     const initial={uid:user.uid,characterName:characterSelect.value,map:"overworld",...positions[characterSelect.value],updatedAt:serverTimestamp()};
+     await set(pRef,initial);
+    }
+    await ensureSafeOverworldPosition(user,await get(pRef));
    }
   }catch(err){
    if(role==="master"){uidLabel.textContent="UID: "+user.uid;help.classList.remove("hidden");throw new Error("Dispositivo mestre não autorizado. Adicione masters/"+user.uid+" com valor true em Realtime Database → Dados e tente novamente. UID: "+user.uid);}
@@ -49,7 +73,11 @@ async function enter(user){
  const s=await get(ref(db,"users/"+user.uid)); if(!s.exists())throw new Error("Perfil não encontrado.");
  const profile=s.val(),role=profile.role==="master"?"master":"player";
  window.firebaseUser=user;window.firebaseRole=role;window.firebaseCharacterName=null;
- const p=await get(ref(db,"players/"+user.uid));if(p.exists())window.firebaseCharacterName=p.val()?.characterName||null;
+ const p=await get(ref(db,"players/"+user.uid));
+ if(p.exists()){
+  window.firebaseCharacterName=p.val()?.characterName||null;
+  if(role==="player")await ensureSafeOverworldPosition(user,p);
+ }
  userLabel.textContent=(user.displayName||profile.displayName||"Jogador")+" · "+(role==="master"?"Mestre":"Jogador");
  // Para sessões retomadas depois de atualizar o site, republica o nome salvo.
  window.ValeCorvoSync?.refreshPresence?.();
