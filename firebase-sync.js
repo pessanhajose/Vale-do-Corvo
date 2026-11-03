@@ -1,4 +1,4 @@
-import { auth, db } from "./firebase-config.js?v=2026-10-30.4";
+import { auth, db } from "./firebase-config.js?v=2026-11-02.1";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import {
   ref, get, set, update, onValue, onDisconnect, serverTimestamp
@@ -351,6 +351,17 @@ async function saveGmNotes(notes) {
 }
 
 // A sala de chegada é a Câmara Ritualística (interior livre, longe das paredes).
+// Depois de sair da cripta, ninguém reaparece no quadrado do portal.
+function cryptExitSpots(entrance, count) {
+  const x = Math.max(0, Math.min(49, entrance?.x ?? 8));
+  const y = Math.max(0, Math.min(39, entrance?.y ?? 8));
+  const offsets = [[0,1],[1,0],[0,-1],[-1,0],[1,1],[-1,1],[1,-1],[-1,-1],
+    [0,2],[2,0],[0,-2],[-2,0]];
+  const available = offsets.map(([dx,dy]) => ({x:x+dx,y:y+dy}))
+    .filter(p => p.x>=0 && p.x<=49 && p.y>=0 && p.y<=39);
+  return Array.from({length:count},(_,i) => available[i % available.length] ||
+    {x:Math.max(0,x-1),y});
+}
 function partyArrivalSpots(count) {
   // Centros reais das sete salas; mesma ordem das posições do mapa.
   const rooms = [
@@ -376,13 +387,12 @@ async function performPartyTravel(mode) {
     const current = window.ValeCorvoApp?.getState?.();
     const group = [...playerDocs.entries()].sort(([a],[b]) => a.localeCompare(b));
     if (!group.length) return;
-    const positions = partyArrivalSpots(group.length);
+    const positions = mode === "dungeon" ? partyArrivalSpots(group.length) :
+      cryptExitSpots(current?.cryptEntrance, group.length);
     const updates = {};
     for (let i = 0; i < group.length; i++) {
       const [uid, doc] = group[i];
-      const spot = mode === "dungeon" ? positions[i] :
-        {x:Math.min(49, (current?.cryptEntrance?.x ?? 8) + i % 2),
-         y:Math.min(39, (current?.cryptEntrance?.y ?? 8) + Math.floor(i / 2))};
+      const spot = positions[i];
       updates[`players/${uid}`] = {
         uid, characterName: doc.characterName, map: mode, x:spot.x, y:spot.y,
         updatedAt: serverTimestamp()
@@ -409,7 +419,7 @@ async function requestPartyTravel(mode) {
   const me = state?.tokens?.find(t => t.id === `player-${activeUser.uid}`);
   if (!me) return;
   const spot = mode === "dungeon" ? partyArrivalSpots(1)[0] :
-    {x:Math.max(0,Math.min(49,state.cryptEntrance?.x ?? 8)),y:Math.max(0,Math.min(39,state.cryptEntrance?.y ?? 8))};
+    cryptExitSpots(state.cryptEntrance, 1)[0];
   await tracked(() => set(ref(db, `players/${activeUser.uid}`), {
     uid:activeUser.uid, characterName:me.name, map:mode,
     x:spot.x, y:spot.y, updatedAt:serverTimestamp()
