@@ -6,12 +6,12 @@
     <meta name="theme-color" content="#090a0f">
     <!-- Versão única para todos os dispositivos. GitHub Pages e celulares podem
          guardar HTML/JS em cache; os módulos abaixo usam esta mesma revisão. -->
-    <meta name="vale-corvo-version" content="2026-11-02.2">
+    <meta name="vale-corvo-version" content="2026-11-02.3">
     <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
     <script>
     (function () {
       'use strict';
-      const localVersion = "2026-11-02.2";
+      const localVersion = "2026-11-02.3";
       let notifiedVersion = '';
       function updateUrl(nextVersion) {
         const url = new URL(window.location.href);
@@ -688,7 +688,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         // 1 = Revealed / Visible
         let dungeonFog = [];
         let brushRadius = 3;
-        let cryptEntrance = { x: 8, y: 8 };
+        let cryptEntrance = { x: 48, y: 31 }; // AW32, à direita das Montanhas Estéreis
         let movingCryptEntrance = false;
         let visionRadius = 4;
         let magicVisionEnabled = false;
@@ -2062,6 +2062,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                     cryptEntrance: {...cryptEntrance},
                     visionRadius,
                     magicVisionEnabled,
+                    entranceVersion: 'AW32-v1',
                     mistEnabled: showMistEffect,
                     mistDensity
                 };
@@ -2079,7 +2080,15 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 if (Array.isArray(state.dungeonFog) && state.dungeonFog.length === GRID_COLS) dungeonFog = state.dungeonFog.map(col => [...col]);
                 if ((state.mapMode === 'overworld' || state.mapMode === 'dungeon') &&
                     state.mapMode !== currentMapMode) switchMapMode(state.mapMode);
-                if (state.cryptEntrance && Number.isInteger(state.cryptEntrance.x) && Number.isInteger(state.cryptEntrance.y)) cryptEntrance = {...state.cryptEntrance};
+                // Campanhas antigas recebem a nova entrada de AW32. Depois da
+                // migração, o mestre pode mover o portal sem perder a escolha.
+                if (state.entranceVersion === 'AW32-v1' &&
+                    state.cryptEntrance && Number.isInteger(state.cryptEntrance.x) &&
+                    Number.isInteger(state.cryptEntrance.y)) {
+                    cryptEntrance = {...state.cryptEntrance};
+                } else {
+                    cryptEntrance = {x:48, y:31};
+                }
                 if (Number.isInteger(state.visionRadius)) visionRadius = Math.max(2, Math.min(12, state.visionRadius));
                 if (typeof state.magicVisionEnabled === 'boolean') magicVisionEnabled = state.magicVisionEnabled;
                 // A névoa ambiental usa sessions/mist, independente das demais alterações
@@ -2177,8 +2186,8 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         };
     </script>
 
-    <script type="module" src="./firebase-auth.js?v=2026-11-02.2"></script>
-    <script type="module" src="./firebase-sync.js?v=2026-11-02.2"></script>
+    <script type="module" src="./firebase-auth.js?v=2026-11-02.3"></script>
+    <script type="module" src="./firebase-sync.js?v=2026-11-02.3"></script>
 
 </body>
 </html>
