@@ -1,5 +1,5 @@
 {
-  "version": "2026-11-02.1",
+  "version": "2026-11-02.2",
   "updated": "2026-11-02",
-  "message": "Entrada da cripta apenas no quadrado do portal; saída segura"
+  "message": "Posição segura no login, fora do portal da cripta"
 }
