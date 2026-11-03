@@ -1,4 +1,4 @@
-import { auth, db } from "./firebase-config.js?v=2026-11-02.2";
+import { auth, db } from "./firebase-config.js?v=2026-11-02.3";
 import { signInAnonymously, onAuthStateChanged, signOut, updateProfile } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 import { ref, get, set, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
@@ -12,24 +12,42 @@ const message=document.getElementById("firebase-auth-message"), submit=document.
 const userBar=document.getElementById("firebase-user-bar"), userLabel=document.getElementById("firebase-user-label");
 const help=document.getElementById("firebase-master-device-help"), uidLabel=document.getElementById("firebase-device-uid");
 const logout=document.getElementById("firebase-logout-master");
-const positions={"Guerreiro":{x:21,y:13},"Mago":{x:20,y:14},"Ladino":{x:22,y:14},"Clérigo":{x:21,y:15}};
-/** Impede que um jogador carregue ou nasça sobre a célula do portal. */
+// Região inicial X15: longe do marcador central do Povoado Névoa-Fria.
+// Cada conta recebe uma célula livre diferente, sempre fora da entrada da cripta.
+const initialSpots=[
+ {x:23,y:14},{x:24,y:14},{x:25,y:14},{x:22,y:15},
+ {x:23,y:15},{x:24,y:15},{x:25,y:15},{x:22,y:16},
+ {x:23,y:16},{x:24,y:16},{x:25,y:16},{x:23,y:17},
+ {x:22,y:17},{x:24,y:17},{x:25,y:17}
+];
+const previousSpawnSpots=[
+ {x:21,y:13},{x:20,y:14},{x:22,y:14},{x:21,y:15}
+];
+async function chooseInitialSpot(uid) {
+ const snap=await get(ref(db,"players"));
+ const occupied=new Set(Object.entries(snap.val()||{})
+   .filter(([other,p])=>other!==uid&&p?.map==="overworld")
+   .map(([,p])=>p.x+":"+p.y));
+ return initialSpots.find(p=>!occupied.has(p.x+":"+p.y)) || initialSpots[0];
+}
+/** Migra apenas posições iniciais antigas e evita login no portal. */
 async function ensureSafeOverworldPosition(user, playerSnap) {
  if(!user || !playerSnap.exists())return;
  const p=playerSnap.val();
- if(p?.map==="dungeon" || !Number.isInteger(p?.x) || !Number.isInteger(p?.y))return;
- const mapSnap=await get(ref(db,"sessions/main/cryptEntrance"));
- const entrance=mapSnap.exists()?mapSnap.val():{x:8,y:8};
- if(!Number.isInteger(entrance?.x)||!Number.isInteger(entrance?.y))return;
- if(p.x!==entrance.x||p.y!==entrance.y)return;
- // O jogador reaparece adjacente, fora do portal, preservando seu personagem.
- const offsets=[[0,1],[1,0],[0,-1],[-1,0],[1,1],[-1,1],[-1,-1]];
- const safe=offsets.map(([dx,dy])=>({x:p.x+dx,y:p.y+dy}))
-   .find(v=>v.x>=0&&v.x<50&&v.y>=0&&v.y<40);
- if(!safe)return;
+ if(p?.map!=="overworld" || !Number.isInteger(p?.x) || !Number.isInteger(p?.y))return;
+ const [versionSnap, entranceSnap]=await Promise.all([
+   get(ref(db,"sessions/main/entranceVersion")),
+   get(ref(db,"sessions/main/cryptEntrance"))
+ ]);
+ const entrance=versionSnap.val()==="AW32-v1" && entranceSnap.exists()
+   ? entranceSnap.val() : {x:48,y:31};
+ const onPortal=entrance && p.x===entrance.x && p.y===entrance.y;
+ const legacySpawn=previousSpawnSpots.some(pos=>pos.x===p.x&&pos.y===p.y);
+ if(!onPortal && !legacySpawn)return;
+ const safe=await chooseInitialSpot(user.uid);
  await set(ref(db,"players/"+user.uid),{
-   ...p,uid:user.uid,map:"overworld",x:safe.x,y:safe.y,
-   updatedAt:serverTimestamp()
+   uid:user.uid,characterName:p.characterName,map:"overworld",
+   x:safe.x,y:safe.y,updatedAt:serverTimestamp()
  });
 }
 
@@ -42,7 +60,7 @@ form.addEventListener("submit",async e=>{
   const name=nameInput.value.trim(), role=roleSelect.value;
   if(!name)throw new Error("Digite seu nome.");
   if(role==="master"&&passwordInput.value!==MASTER_PASSWORD)throw new Error("Senha do mestre incorreta.");
-  if(role==="player"&&!Object.prototype.hasOwnProperty.call(positions,characterSelect.value))throw new Error("Selecione um personagem válido.");
+  if(role==="player"&&!["Guerreiro","Mago","Ladino","Clérigo"].includes(characterSelect.value))throw new Error("Selecione um personagem válido.");
   msg("Conectando ao Firebase…");
   const user=auth.currentUser||(await signInAnonymously(auth)).user;
   if(user.displayName!==name)await updateProfile(user,{displayName:name});
@@ -53,7 +71,8 @@ form.addEventListener("submit",async e=>{
    if(role==="player"){
     const pRef=ref(db,"players/"+user.uid),p=await get(pRef);
     if(!p.exists()){
-     const initial={uid:user.uid,characterName:characterSelect.value,map:"overworld",...positions[characterSelect.value],updatedAt:serverTimestamp()};
+     const safe=await chooseInitialSpot(user.uid);
+     const initial={uid:user.uid,characterName:characterSelect.value,map:"overworld",...safe,updatedAt:serverTimestamp()};
      await set(pRef,initial);
     }
     await ensureSafeOverworldPosition(user,await get(pRef));
