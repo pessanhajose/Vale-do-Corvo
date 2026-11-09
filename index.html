@@ -6,12 +6,12 @@
     <meta name="theme-color" content="#090a0f">
     <!-- Versão única para todos os dispositivos. GitHub Pages e celulares podem
          guardar HTML/JS em cache; os módulos abaixo usam esta mesma revisão. -->
-    <meta name="vale-corvo-version" content="2026-11-02.4">
+    <meta name="vale-corvo-version" content="2026-11-09.1">
     <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
     <script>
     (function () {
       'use strict';
-      const localVersion = "2026-11-02.4";
+      const localVersion = "2026-11-09.1";
       let notifiedVersion = '';
       function updateUrl(nextVersion) {
         const url = new URL(window.location.href);
@@ -424,10 +424,35 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                         <i class="fa-solid fa-user text-slate-200 text-sm"></i>
                     </div>
                 </div>
+                <button onclick="openCustomTokenDialog()" class="w-full rounded-lg bg-violet-900/75 hover:bg-violet-800 border border-violet-400 px-2 py-2 text-xs font-bold text-violet-100" title="Criar um token com nome e função livre">
+                    <i class="fa-solid fa-circle-plus"></i> + Token personalizado
+                </button>
+                <p class="text-[10px] text-amber-200/90 max-w-48 leading-snug">Tokens começam ocultos. Mestre: toque ou clique duas vezes no token para revelar ou esconder.</p>
                 <button onclick="clearAllTokens()" class="text-[10px] text-red-400 hover:text-red-300 text-center pt-1 border-t border-gothic-800 transition">
                     <i class="fa-solid fa-trash-can"></i> Limpar Tokens
                 </button>
             </div>
+        </div>
+
+        <!-- Criacao de token: uso exclusivo do mestre; nenhuma funcao predefinida. -->
+        <div id="custom-token-dialog" class="hidden fixed inset-0 z-[1001] bg-black/80 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="custom-token-title" onclick="if(event.target===this)closeCustomTokenDialog()">
+            <form id="custom-token-form" onsubmit="createCustomToken(event)" class="w-full max-w-sm rounded-xl border border-violet-500 bg-gothic-900 p-5 shadow-2xl space-y-3">
+                <h2 id="custom-token-title" class="text-base font-gothic text-corvo-gold font-bold">Criar token personalizado</h2>
+                <label class="block text-xs text-gray-200">Nome do token *
+                    <input id="custom-token-name" name="tokenName" required maxlength="50" placeholder="Ex.: Sentinela Esquecida" class="mt-1 w-full bg-gothic-950 border border-gothic-600 rounded-lg p-2 text-sm text-white" />
+                </label>
+                <label class="block text-xs text-gray-200">Função (livre, opcional)
+                    <input id="custom-token-role" name="tokenRole" maxlength="100" placeholder="Ex.: inimigo, aliado, armadilha, objeto..." class="mt-1 w-full bg-gothic-950 border border-gothic-600 rounded-lg p-2 text-sm text-white" />
+                </label>
+                <label class="block text-xs text-gray-200">Cor
+                    <input id="custom-token-color" name="tokenColor" type="color" value="#a855f7" class="mt-1 w-full h-10 rounded border border-gothic-600 bg-gothic-950 p-1" />
+                </label>
+                <p class="text-xs text-amber-200">O token começa invisível para os jogadores. Depois, clique ou toque duas vezes nele para revelar.</p>
+                <div class="flex gap-2 justify-end">
+                    <button type="button" onclick="closeCustomTokenDialog()" class="rounded bg-gothic-700 px-3 py-2 text-xs">Cancelar</button>
+                    <button type="submit" class="rounded bg-violet-700 hover:bg-violet-600 px-3 py-2 text-xs font-bold text-white">Criar token</button>
+                </div>
+            </form>
         </div>
 
         <!-- Sidebar / Lore & DM Panel -->
@@ -1184,6 +1209,10 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             // Draw Tokens
             tokens.forEach(token => {
                 if (token.map && token.map !== currentMapMode) return;
+                // Inimigos, NPCs e elementos são invisíveis aos jogadores até
+                // o mestre autorizar a exibição de cada token (visible=true).
+                const hiddenByMaster = token.type !== 'hero' && token.visible !== true;
+                if (hiddenByMaster && window.firebaseRole !== 'master') return;
                 // Todos os jogadores veem os heróis conectados; o UID diferencia contas
                 // mesmo quando duas pessoas escolhem a mesma classe. Só o dono pode movê-los.
                 // In dungeon mode, only draw tokens if cell is revealed or GM is viewing
@@ -1193,7 +1222,30 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 const ty = token.y * tileSize + tileSize / 2;
                 const radius = tileSize * 0.38;
 
-                if (!isRevealed) {
+                if (hiddenByMaster) {
+                    // O mestre enxerga um marcador fantasma, mas o jogador não
+                    // recebe nenhuma imagem nem nome desse token no canvas.
+                    ctx.save();
+                    ctx.globalAlpha = 0.65;
+                    ctx.beginPath();
+                    ctx.arc(tx, ty, radius, 0, Math.PI * 2);
+                    ctx.fillStyle = '#1f2937';
+                    ctx.fill();
+                    ctx.strokeStyle = '#fbbf24';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([4, 3]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    ctx.fillStyle = '#fef3c7';
+                    ctx.font = 'bold 12px Inter, sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('?', tx, ty);
+                    ctx.restore();
+                    return;
+                }
+
+                if (!isRevealed && window.firebaseRole !== 'master') {
                     // Draw dim outline for GM
                     ctx.beginPath();
                     ctx.arc(tx, ty, radius, 0, Math.PI * 2);
@@ -1599,7 +1651,15 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             window.ValeCorvoSync?.requestPartyTravel?.(mode);
         }
 
-        // Mouse Interactions for Pan, Tokens, and Fog Painting
+        // Duplo clique/toque do mestre revela OU oculta um único token.
+        // Funciona também com toque, pois o canvas usa pointer events.
+        let lastTokenTap = null;
+        function toggleTokenVisibility(token) {
+            if (window.firebaseRole !== 'master' || !token || token.type === 'hero') return;
+            token.visible = token.visible !== true;
+            drawMap();
+            window.ValeCorvoSync?.queueSessionSave();
+        }
         function onMapPointerDown(e, isTouch) {
             isDragging = true;
             startX = e.clientX - offsetX;
@@ -1610,6 +1670,21 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
             const mouseY = (e.clientY - rect.top - offsetY) / scale;
             const gridX = Math.floor(mouseX / tileSize);
             const gridY = Math.floor(mouseY / tileSize);
+
+            if (window.firebaseRole === 'master' && currentTool !== 'delete-token') {
+                const target = [...tokens].reverse().find(t => t.type !== 'hero' &&
+                    (!t.map || t.map === currentMapMode) && t.x === gridX && t.y === gridY);
+                const now = Date.now();
+                if (target && lastTokenTap && lastTokenTap.id === target.id &&
+                    now - lastTokenTap.time <= 440) {
+                    lastTokenTap = null;
+                    isDragging = false;
+                    draggedTokenId = null;
+                    toggleTokenVisibility(target);
+                    return;
+                }
+                lastTokenTap = target ? {id:target.id, time:now} : null;
+            }
 
             if (currentTool === 'delete-token') {
                 isDragging = false;
@@ -1685,6 +1760,7 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                         if (currentMapMode === 'dungeon' &&
                             !dungeonPathIsClear(token.x, token.y, gridX, gridY)) return;
                         const previousX = token.x, previousY = token.y;
+                        if (token.x !== gridX || token.y !== gridY) lastTokenTap = null;
                         token.x = gridX;
                         token.y = gridY;
 
@@ -1838,7 +1914,8 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                 id: uniqueMapTokenId(),
                 type, name, color,
                 x: pos.x, y: pos.y,
-                map: currentMapMode
+                map: currentMapMode,
+                visible: type === 'hero'
             };
             tokens.push(newToken);
             populatePlayerSelects();
@@ -1870,13 +1947,45 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                     id: uniqueMapTokenId(),
                     type, name, color,
                     x: pos.x, y: pos.y,
-                    map: currentMapMode
+                    map: currentMapMode,
+                    visible: type === 'hero'
                 });
                 populatePlayerSelects();
                 drawMap();
                 window.ValeCorvoSync?.queueSessionSave();
             }
         });
+
+        function openCustomTokenDialog() {
+            if (window.firebaseRole !== 'master') return;
+            const dialog = document.getElementById('custom-token-dialog');
+            document.getElementById('custom-token-form').reset();
+            dialog.classList.remove('hidden');
+            document.getElementById('custom-token-name').focus();
+        }
+        function closeCustomTokenDialog() {
+            document.getElementById('custom-token-dialog').classList.add('hidden');
+        }
+        function createCustomToken(e) {
+            e.preventDefault();
+            if (window.firebaseRole !== 'master') return;
+            const name = document.getElementById('custom-token-name').value.trim().slice(0, 50);
+            if (!name) return;
+            const role = document.getElementById('custom-token-role').value.trim().slice(0, 100);
+            const color = document.getElementById('custom-token-color').value;
+            const x = Math.floor((canvas.width / 2 - offsetX) / scale / tileSize);
+            const y = Math.floor((canvas.height / 2 - offsetY) / scale / tileSize);
+            const pos = validTokenSpawn(Math.max(0, Math.min(GRID_COLS - 1, x)),
+                Math.max(0, Math.min(GRID_ROWS - 1, y)));
+            tokens.push({
+                id: uniqueMapTokenId(), type: 'custom', name, role, color,
+                x: pos.x, y: pos.y, map: currentMapMode, visible: false
+            });
+            closeCustomTokenDialog();
+            populatePlayerSelects();
+            drawMap();
+            window.ValeCorvoSync?.queueSessionSave();
+        }
 
         function clearAllTokens() {
             if (window.firebaseRole === 'player') return;
@@ -2181,8 +2290,8 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         };
     </script>
 
-    <script type="module" src="./firebase-auth.js?v=2026-11-02.4"></script>
-    <script type="module" src="./firebase-sync.js?v=2026-11-02.4"></script>
+    <script type="module" src="./firebase-auth.js?v=2026-11-09.1"></script>
+    <script type="module" src="./firebase-sync.js?v=2026-11-09.1"></script>
 
 </body>
 </html>
