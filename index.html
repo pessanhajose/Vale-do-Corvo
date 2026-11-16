@@ -6,12 +6,12 @@
     <meta name="theme-color" content="#090a0f">
     <!-- Versão única para todos os dispositivos. GitHub Pages e celulares podem
          guardar HTML/JS em cache; os módulos abaixo usam esta mesma revisão. -->
-    <meta name="vale-corvo-version" content="2026-11-09.1">
+    <meta name="vale-corvo-version" content="2026-11-16.1">
     <meta http-equiv="Cache-Control" content="no-cache, must-revalidate">
     <script>
     (function () {
       'use strict';
-      const localVersion = "2026-11-09.1";
+      const localVersion = "2026-11-16.1";
       let notifiedVersion = '';
       function updateUrl(nextVersion) {
         const url = new URL(window.location.href);
@@ -401,6 +401,9 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
                     </div>
                     <div draggable="true" ondragstart="selectTokenType(event, 'hero', 'Clérigo', '#eab308')" onclick="spawnTokenAtCenter('hero', 'Clérigo', '#eab308')" class="w-10 h-10 rounded-full bg-amber-950 border-2 border-amber-400 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Herói: Clérigo">
                         <i class="fa-solid fa-ankh text-amber-200 text-sm"></i>
+                    </div>
+                    <div role="button" tabindex="0" draggable="true" ondragstart="selectTokenType(event, 'hero', 'Bardo', '#ec4899')" onclick="spawnTokenAtCenter('hero', 'Bardo', '#ec4899')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" class="w-10 h-10 rounded-full bg-pink-950 border-2 border-pink-400 flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Herói: Bardo" aria-label="Adicionar token Bardo">
+                        <i class="fa-solid fa-music text-pink-200 text-sm"></i>
                     </div>
                     <div draggable="true" ondragstart="selectTokenType(event, 'boss', 'Barão Roderick', '#b91c1c')" onclick="spawnTokenAtCenter('boss', 'Barão Roderick', '#b91c1c')" class="w-10 h-10 rounded-full bg-blood-900 border-2 border-corvo-gold flex items-center justify-center cursor-pointer hover:scale-105 transition shadow" title="Chefe: Barão Roderick">
                         <i class="fa-solid fa-crown text-corvo-gold text-sm"></i>
@@ -2294,8 +2297,8 @@ body.player-view #btn-mode-overworld, body.player-view #btn-mode-dungeon {displa
         };
     </script>
 
-    <script type="module" src="./firebase-auth.js?v=2026-11-09.1"></script>
-    <script type="module" src="./firebase-sync.js?v=2026-11-09.1"></script>
+    <script type="module" src="./firebase-auth.js?v=2026-11-16.1"></script>
+    <script type="module" src="./firebase-sync.js?v=2026-11-16.1"></script>
 
 </body>
 </html>
